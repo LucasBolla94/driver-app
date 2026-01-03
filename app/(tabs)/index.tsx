@@ -15,6 +15,9 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import MapOnlineScreen from './map-online';
+import BottomNavigation from '../../components/BottomNavigation';
+import JobsScreen from '../../components/JobsScreen';
+import BoardScreen from '../../components/BoardScreen';
 
 const { width, height } = Dimensions.get('window');
 const SWIPE_BUTTON_SIZE = 56;
@@ -25,10 +28,13 @@ const SWIPE_WIDTH = width * 0.85;
 // Precisa ser a distância que o botão pode percorrer
 const SWIPE_THRESHOLD = SWIPE_WIDTH - SWIPE_BUTTON_SIZE - (SWIPE_PILL_PADDING * 2);
 
+type TabType = 'map' | 'jobs' | 'board' | 'profile';
+
 export default function HomeScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [currentTab, setCurrentTab] = useState<TabType>('map');
   const mapRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -141,6 +147,10 @@ export default function HomeScreen() {
     setIsOnline(false);
   };
 
+  const handleTabChange = (tab: TabType) => {
+    setCurrentTab(tab);
+  };
+
   // If online, show the map online screen
   if (isOnline) {
     return <MapOnlineScreen onGoOffline={handleToggleOffline} />;
@@ -150,172 +160,159 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      <View style={styles.contentWrapper}>
-        {/* Header Profile */}
-        <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={44} color="#000000" />
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Jhon Steven</Text>
-            <View style={styles.ratingContainer}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Ionicons key={star} name="star" size={14} color="#FFD700" />
-              ))}
+      {/* Render different content based on tab */}
+      {currentTab === 'jobs' && <JobsScreen />}
+
+      {currentTab === 'map' && (
+        <View style={styles.contentWrapper}>
+          {/* Header Profile */}
+          <View style={styles.header}>
+            <View style={styles.avatarContainer}>
+              <Ionicons name="person" size={44} color="#000000" />
             </View>
-            <Text style={styles.pointsText}>1250 points / jobs</Text>
-          </View>
-        </View>
-
-        {/* Status Badge */}
-        <View style={styles.statusBadgeContainer}>
-          <View style={[styles.statusBadge, isOnline && styles.statusBadgeOnline]}>
-            <Text style={[styles.statusText, isOnline && styles.statusTextOnline]}>
-              {isOnline ? 'ONLINE' : 'OFFLINE'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Map Card */}
-        <View style={styles.mapCard}>
-          {location ? (
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={PROVIDER_GOOGLE}
-              initialRegion={location}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              pitchEnabled={false}
-              rotateEnabled={false}
-              showsUserLocation={true}
-              showsMyLocationButton={false}
-              showsCompass={false}
-              showsScale={false}
-              loadingEnabled={true}
-            >
-              <Marker
-                coordinate={{
-                  latitude: location.latitude,
-                  longitude: location.longitude,
-                }}
-                title="Your Location"
-                description="You are here"
-              >
-                <View style={styles.customMarker}>
-                  <View style={styles.markerDot} />
-                </View>
-              </Marker>
-            </MapView>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Text style={styles.loadingText}>Loading map...</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Swipe to Online Control */}
-        <View style={styles.swipeContainer}>
-          {!isOnline ? (
-            <View style={styles.swipePill} {...panResponder.panHandlers}>
-              {/* Background Text */}
-              <View style={styles.swipeTextContainer}>
-                <Animated.Text
-                  style={[
-                    styles.swipeTextOffline,
-                    {
-                      opacity: slideAnim.interpolate({
-                        inputRange: [0, SWIPE_THRESHOLD * 0.5],
-                        outputRange: [1, 0],
-                        extrapolate: 'clamp',
-                      }),
-                    },
-                  ]}
-                >
-                  OFFLINE
-                </Animated.Text>
-                <Animated.Text
-                  style={[
-                    styles.swipeTextOnline,
-                    {
-                      opacity: slideAnim.interpolate({
-                        inputRange: [SWIPE_THRESHOLD * 0.3, SWIPE_THRESHOLD],
-                        outputRange: [0, 1],
-                        extrapolate: 'clamp',
-                      }),
-                    },
-                  ]}
-                >
-                  ONLINE
-                </Animated.Text>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>Jhon Steven</Text>
+              <View style={styles.ratingContainer}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Ionicons key={star} name="star" size={14} color="#FFD700" />
+                ))}
               </View>
-
-              {/* Swipe Button */}
-              <Animated.View
-                style={[
-                  styles.swipeButton,
-                  {
-                    transform: [{ translateX: slideAnim }],
-                  },
-                ]}
-              >
-                <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#FFFFFF" />
-              </Animated.View>
-
-              {/* Progress Background */}
-              <Animated.View
-                style={[
-                  styles.swipeProgress,
-                  {
-                    width: slideAnim.interpolate({
-                      inputRange: [0, SWIPE_THRESHOLD],
-                      outputRange: [SWIPE_BUTTON_SIZE, SWIPE_WIDTH],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ]}
-              />
+              <Text style={styles.pointsText}>1250 points / jobs</Text>
             </View>
-          ) : (
-            <TouchableOpacity style={styles.onlineButton} onPress={handleToggleOffline}>
-              <Ionicons name="checkmark-circle" size={24} color="#00C853" style={styles.onlineIcon} />
-              <Text style={styles.onlineButtonText}>YOU'RE ONLINE</Text>
-              <Text style={styles.offlineSubtext}>Tap to go offline</Text>
-            </TouchableOpacity>
-          )}
+          </View>
+
+          {/* Status Badge */}
+          <View style={styles.statusBadgeContainer}>
+            <View style={[styles.statusBadge, isOnline && styles.statusBadgeOnline]}>
+              <Text style={[styles.statusText, isOnline && styles.statusTextOnline]}>
+                {isOnline ? 'ONLINE' : 'OFFLINE'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Map Card */}
+          <View style={styles.mapCard}>
+            {location ? (
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                provider={PROVIDER_GOOGLE}
+                initialRegion={location}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+                showsUserLocation={true}
+                showsMyLocationButton={false}
+                showsCompass={false}
+                showsScale={false}
+                loadingEnabled={true}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  title="Your Location"
+                  description="You are here"
+                >
+                  <View style={styles.customMarker}>
+                    <View style={styles.markerDot} />
+                  </View>
+                </Marker>
+              </MapView>
+            ) : (
+              <View style={styles.mapPlaceholder}>
+                <Text style={styles.loadingText}>Loading map...</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Swipe to Online Control */}
+          <View style={styles.swipeContainer}>
+            {!isOnline ? (
+              <View style={styles.swipePill} {...panResponder.panHandlers}>
+                {/* Background Text */}
+                <View style={styles.swipeTextContainer}>
+                  <Animated.Text
+                    style={[
+                      styles.swipeTextOffline,
+                      {
+                        opacity: slideAnim.interpolate({
+                          inputRange: [0, SWIPE_THRESHOLD * 0.5],
+                          outputRange: [1, 0],
+                          extrapolate: 'clamp',
+                        }),
+                      },
+                    ]}
+                  >
+                    OFFLINE
+                  </Animated.Text>
+                  <Animated.Text
+                    style={[
+                      styles.swipeTextOnline,
+                      {
+                        opacity: slideAnim.interpolate({
+                          inputRange: [SWIPE_THRESHOLD * 0.3, SWIPE_THRESHOLD],
+                          outputRange: [0, 1],
+                          extrapolate: 'clamp',
+                        }),
+                      },
+                    ]}
+                  >
+                    ONLINE
+                  </Animated.Text>
+                </View>
+
+                {/* Swipe Button */}
+                <Animated.View
+                  style={[
+                    styles.swipeButton,
+                    {
+                      transform: [{ translateX: slideAnim }],
+                    },
+                  ]}
+                >
+                  <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#FFFFFF" />
+                </Animated.View>
+
+                {/* Progress Background */}
+                <Animated.View
+                  style={[
+                    styles.swipeProgress,
+                    {
+                      width: slideAnim.interpolate({
+                        inputRange: [0, SWIPE_THRESHOLD],
+                        outputRange: [SWIPE_BUTTON_SIZE, SWIPE_WIDTH],
+                        extrapolate: 'clamp',
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.onlineButton} onPress={handleToggleOffline}>
+                <Ionicons name="checkmark-circle" size={24} color="#00C853" style={styles.onlineIcon} />
+                <Text style={styles.onlineButtonText}>YOU'RE ONLINE</Text>
+                <Text style={styles.offlineSubtext}>Tap to go offline</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
-      {/* Bottom Navigation - Fixed */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <View style={[styles.navItemContent, styles.navItemActive]}>
-            <Ionicons name="map" size={24} color="#000000" />
-            <Text style={styles.navLabel}>MAP</Text>
-          </View>
-        </TouchableOpacity>
+      {currentTab === 'board' && <BoardScreen />}
 
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="briefcase-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>JOBS</Text>
-          </View>
-        </TouchableOpacity>
+      {currentTab === 'profile' && (
+        <View style={styles.emptyScreen}>
+          <Ionicons name="person-outline" size={64} color="#666666" />
+          <Text style={styles.emptyText}>Profile Screen</Text>
+          <Text style={styles.emptySubtext}>Coming soon</Text>
+        </View>
+      )}
 
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="grid-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>BOARD</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="person-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>PROFILE</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom Navigation - Always visible */}
+      <BottomNavigation currentTab={currentTab} onTabChange={handleTabChange} />
     </View>
   );
 }
@@ -528,41 +525,23 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     opacity: 0.75,
   },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5E5',
-    paddingBottom: 24,
-    paddingTop: 12,
-    paddingHorizontal: 0,
-  },
-  navItem: {
+  emptyScreen: {
     flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  navItemContent: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  navItemActive: {
-    backgroundColor: '#F0F0F0',
-  },
-  navLabel: {
-    fontSize: 10,
+  emptyText: {
+    fontSize: 24,
     fontWeight: '600',
-    color: '#000000',
-    marginTop: 6,
+    color: '#333333',
     fontFamily: 'Poppins',
-    letterSpacing: 0.5,
+    marginTop: 16,
   },
-  navLabelInactive: {
-    color: '#666666',
+  emptySubtext: {
+    fontSize: 16,
+    color: '#999999',
+    fontFamily: 'Poppins',
+    marginTop: 8,
   },
 });

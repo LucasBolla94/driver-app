@@ -4,24 +4,30 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   Switch,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
-
-const { width, height } = Dimensions.get('window');
+import JobNotification from '../../components/JobNotification';
+import JobsScreen from '../../components/JobsScreen';
+import BoardScreen from '../../components/BoardScreen';
+import BottomNavigation from '../../components/BottomNavigation';
 
 interface MapOnlineScreenProps {
   onGoOffline: () => void;
 }
 
+type TabType = 'map' | 'jobs' | 'board' | 'profile';
+
 export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
-  const [location, setLocation] = useState(null);
+  const [location, setLocation] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const mapRef = useRef(null);
+  const [showJobNotification, setShowJobNotification] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [currentTab, setCurrentTab] = useState<TabType>('map');
+  const mapRef = useRef<any>(null);
 
   const centerMapOnUser = () => {
     if (mapRef.current && location) {
@@ -42,6 +48,10 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
     setTimeout(() => {
       onGoOffline();
     }, 300);
+  };
+
+  const handleTabChange = (tab: TabType) => {
+    setCurrentTab(tab);
   };
 
   useEffect(() => {
@@ -94,6 +104,28 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!mapLoaded) return;
+
+    const jobTimer = setTimeout(() => {
+      setShowJobNotification(true);
+    }, 5000);
+
+    return () => {
+      clearTimeout(jobTimer);
+    };
+  }, [mapLoaded]);
+
+  const handleAcceptJob = () => {
+    setShowJobNotification(false);
+    console.log('Job aceito!');
+  };
+
+  const handleRejectJob = () => {
+    setShowJobNotification(false);
+    console.log('Job rejeitado!');
+  };
 
   const customMapStyle = [
     {
@@ -185,101 +217,107 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
     },
   ];
 
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      {/* Top Status Bar */}
-      <View style={styles.topBar}>
-        <View style={styles.onlineBadge}>
-          <Text style={styles.onlineBadgeText}>ONLINE</Text>
-        </View>
-        <Switch
-          value={isOnline}
-          onValueChange={handleToggleOffline}
-          trackColor={{ false: '#4A4A4A', true: '#00C853' }}
-          thumbColor="#FFFFFF"
-          ios_backgroundColor="#4A4A4A"
-          style={styles.switch}
-        />
-      </View>
+      {/* Render different content based on tab */}
+      {currentTab === 'jobs' && <JobsScreen />}
 
-      {/* Center Button */}
-      <TouchableOpacity style={styles.centerButton} onPress={centerMapOnUser}>
-        <Ionicons name="locate" size={24} color="#000000" />
-      </TouchableOpacity>
+      {currentTab === 'map' && (
+        <>
+          {/* Top Status Bar */}
+          <View style={styles.topBar}>
+            <View style={styles.onlineBadge}>
+              <Text style={styles.onlineBadgeText}>ONLINE</Text>
+            </View>
+            <Switch
+              value={isOnline}
+              onValueChange={handleToggleOffline}
+              trackColor={{ false: '#4A4A4A', true: '#00C853' }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor="#4A4A4A"
+              style={styles.switch}
+            />
+          </View>
 
-      {/* Full Screen Map */}
-      <View style={styles.mapContainer}>
-        {location ? (
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            initialRegion={location}
-            customMapStyle={customMapStyle}
-            scrollEnabled={true}
-            zoomEnabled={true}
-            pitchEnabled={false}
-            rotateEnabled={true}
-            showsUserLocation={false}
-            showsMyLocationButton={false}
-            showsCompass={false}
-            showsScale={false}
-            showsBuildings={true}
-            showsTraffic={false}
-            showsIndoors={false}
-            loadingEnabled={true}
-          >
-            <Marker
-              coordinate={{
-                latitude: location.latitude,
-                longitude: location.longitude,
-              }}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <View style={styles.driverMarker}>
-                <View style={styles.markerInner} />
+          {/* Center Button */}
+          <TouchableOpacity style={styles.centerButton} onPress={centerMapOnUser}>
+            <Ionicons name="locate" size={24} color="#000000" />
+          </TouchableOpacity>
+
+          {/* Full Screen Map */}
+          <View style={styles.mapContainer}>
+            {location ? (
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                provider={PROVIDER_GOOGLE}
+                initialRegion={location}
+                customMapStyle={customMapStyle}
+                scrollEnabled={true}
+                zoomEnabled={true}
+                pitchEnabled={false}
+                rotateEnabled={true}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+                showsCompass={false}
+                showsScale={false}
+                showsBuildings={true}
+                showsTraffic={false}
+                showsIndoors={false}
+                loadingEnabled={true}
+                onMapReady={() => setMapLoaded(true)}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                >
+                  <View style={styles.driverMarker}>
+                    <View style={styles.markerInner} />
+                  </View>
+                </Marker>
+              </MapView>
+            ) : (
+              <View style={styles.mapPlaceholder}>
+                <Text style={styles.loadingText}>Loading map...</Text>
               </View>
-            </Marker>
-          </MapView>
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.loadingText}>Loading map...</Text>
+            )}
           </View>
-        )}
-      </View>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <View style={[styles.navItemContent, styles.navItemActive]}>
-            <Ionicons name="map" size={24} color="#000000" />
-            <Text style={styles.navLabel}>MAP</Text>
-          </View>
-        </TouchableOpacity>
+          {/* Job Notification */}
+          {showJobNotification && (
+            <JobNotification
+              pickupAddress="221B Baker Street, NW1 6XE"
+              pickupTime="14:30"
+              deliveryAddress="10 Downing Street, SW1A 2AA"
+              deliveryTime="15:15"
+              amount="£12.50"
+              distance="3.2 mi"
+              multipleDrops={false}
+              onAccept={handleAcceptJob}
+              onReject={handleRejectJob}
+            />
+          )}
+        </>
+      )}
 
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="briefcase-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>JOBS</Text>
-          </View>
-        </TouchableOpacity>
+      {currentTab === 'board' && <BoardScreen />}
 
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="grid-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>BOARD</Text>
-          </View>
-        </TouchableOpacity>
+      {currentTab === 'profile' && (
+        <View style={styles.emptyScreen}>
+          <Ionicons name="person-outline" size={64} color="#666666" />
+          <Text style={styles.emptyText}>Profile Screen</Text>
+          <Text style={styles.emptySubtext}>Coming soon</Text>
+        </View>
+      )}
 
-        <TouchableOpacity style={styles.navItem}>
-          <View style={styles.navItemContent}>
-            <Ionicons name="person-outline" size={24} color="#666666" />
-            <Text style={[styles.navLabel, styles.navLabelInactive]}>PROFILE</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom Navigation - Always visible */}
+      <BottomNavigation currentTab={currentTab} onTabChange={handleTabChange} />
     </View>
   );
 }
@@ -366,39 +404,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FFD700',
   },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    backgroundColor: '#F5F5F5',
-    paddingBottom: 24,
-    paddingTop: 12,
-    paddingHorizontal: 0,
-  },
-  navItem: {
+  emptyScreen: {
     flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F5F5F5',
   },
-  navItemContent: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  navItemActive: {
-    backgroundColor: '#F0F0F0',
-  },
-  navLabel: {
-    fontSize: 10,
+  emptyText: {
+    fontSize: 24,
     fontWeight: '600',
-    color: '#000000',
-    marginTop: 6,
+    color: '#333333',
     fontFamily: 'Poppins',
-    letterSpacing: 0.5,
+    marginTop: 16,
   },
-  navLabelInactive: {
-    color: '#666666',
+  emptySubtext: {
+    fontSize: 16,
+    color: '#999999',
+    fontFamily: 'Poppins',
+    marginTop: 8,
   },
 });

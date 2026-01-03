@@ -10,10 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.nexly.driver",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location to show nearby jobs and track deliveries.",
         "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby jobs and track deliveries.",
-        "NSLocationAlwaysUsageDescription": "This app needs your location always to track deliveries in the background."
+        "NSLocationAlwaysUsageDescription": "This app needs your location always to track deliveries in the background.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
@@ -28,7 +30,8 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
+        "ACCESS_BACKGROUND_LOCATION",
+        "VIBRATE"
       ],
       "package": "com.bolla.driverapp",
       "config": {
@@ -65,7 +68,8 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

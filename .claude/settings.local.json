@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(npx expo install:*)",
-      "Bash(npx expo prebuild:*)"
+      "Bash(npx expo prebuild:*)",
+      "Bash(dir:*)",
+      "Bash(move \"app\\\\\\(tabs\\)\\\\jobs.tsx\" \"components\\\\JobsScreen.tsx\")",
+      "Bash(npx expo start --clear)",
+      "Bash(npx expo start:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
