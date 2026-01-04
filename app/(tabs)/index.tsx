@@ -12,12 +12,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import MapOnlineScreen from './map-online';
 import BottomNavigation from '../../components/BottomNavigation';
 import JobsScreen from '../../components/JobsScreen';
 import BoardScreen from '../../components/BoardScreen';
+import { supabase } from '../../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 const SWIPE_BUTTON_SIZE = 56;
@@ -35,6 +38,8 @@ export default function HomeScreen() {
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [currentTab, setCurrentTab] = useState<TabType>('map');
+  const [driverName, setDriverName] = useState('Loading...');
+  const [driverPoints, setDriverPoints] = useState(0);
   const mapRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -107,6 +112,77 @@ export default function HomeScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+    const fetchDriverData = async () => {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          // Fetch driver data from drivers table
+          const { data: driverData, error } = await supabase
+            .from('drivers')
+            .select('firstName, lastName, points')
+            .eq('userId', user.id)
+            .single();
+
+          if (driverData && !error) {
+            setDriverName(`${driverData.firstName} ${driverData.lastName}`);
+            setDriverPoints(driverData.points || 0);
+          } else {
+            setDriverName('Driver');
+          }
+
+          // Check if driver is already online in drivers_online table
+          const { data: onlineData, error: onlineError } = await supabase
+            .from('drivers_online')
+            .select('status')
+            .eq('userId', user.id)
+            .single();
+
+          if (onlineData && !onlineError && onlineData.status === true) {
+            console.log('Driver is already online, setting isOnline to true');
+            setIsOnline(true);
+          } else {
+            // Ensure status is set to false if driver is offline
+            console.log('Driver is offline, ensuring status is false in database');
+            await setDriverOfflineInDB();
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching driver data:', error);
+        setDriverName('Driver');
+      }
+    };
+
+    fetchDriverData();
+  }, []);
+
+  // Function to set driver offline in database
+  const setDriverOfflineInDB = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from('drivers_online')
+        .update({ status: false })
+        .eq('userId', user.id);
+    } catch (error) {
+      console.error('Error setting driver offline:', error);
+    }
+  };
+
+  // Effect to update location when online and set offline status when offline
+  useEffect(() => {
+    // Only run location updates when OFFLINE screen is visible
+    // When online, MapOnlineScreen handles location updates
+    if (!isOnline) {
+      // When going offline, update status in database
+      setDriverOfflineInDB();
+    }
+  }, [isOnline]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -143,12 +219,25 @@ export default function HomeScreen() {
     })
   ).current;
 
-  const handleToggleOffline = () => {
+  const handleToggleOffline = async () => {
+    await setDriverOfflineInDB();
     setIsOnline(false);
   };
 
   const handleTabChange = (tab: TabType) => {
     setCurrentTab(tab);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await setDriverOfflineInDB();
+      await supabase.auth.signOut();
+      await AsyncStorage.removeItem('keepLoggedIn');
+      router.replace('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Error', 'Failed to logout. Please try again.');
+    }
   };
 
   // If online, show the map online screen
@@ -171,13 +260,13 @@ export default function HomeScreen() {
               <Ionicons name="person" size={44} color="#000000" />
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>Jhon Steven</Text>
+              <Text style={styles.profileName}>{driverName}</Text>
               <View style={styles.ratingContainer}>
                 {[1, 2, 3, 4, 5].map((star) => (
                   <Ionicons key={star} name="star" size={14} color="#FFD700" />
                 ))}
               </View>
-              <Text style={styles.pointsText}>1250 points / jobs</Text>
+              <Text style={styles.pointsText}>{driverPoints} points / jobs</Text>
             </View>
           </View>
 
@@ -207,20 +296,8 @@ export default function HomeScreen() {
                 showsCompass={false}
                 showsScale={false}
                 loadingEnabled={true}
-              >
-                <Marker
-                  coordinate={{
-                    latitude: location.latitude,
-                    longitude: location.longitude,
-                  }}
-                  title="Your Location"
-                  description="You are here"
-                >
-                  <View style={styles.customMarker}>
-                    <View style={styles.markerDot} />
-                  </View>
-                </Marker>
-              </MapView>
+              />
+
             ) : (
               <View style={styles.mapPlaceholder}>
                 <Text style={styles.loadingText}>Loading map...</Text>
@@ -304,10 +381,26 @@ export default function HomeScreen() {
       {currentTab === 'board' && <BoardScreen />}
 
       {currentTab === 'profile' && (
-        <View style={styles.emptyScreen}>
-          <Ionicons name="person-outline" size={64} color="#666666" />
-          <Text style={styles.emptyText}>Profile Screen</Text>
-          <Text style={styles.emptySubtext}>Coming soon</Text>
+        <View style={styles.profileScreen}>
+          <View style={styles.profileHeader}>
+            <View style={styles.profileAvatarLarge}>
+              <Ionicons name="person" size={64} color="#000000" />
+            </View>
+            <Text style={styles.profileNameLarge}>{driverName}</Text>
+            <View style={styles.ratingContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Ionicons key={star} name="star" size={18} color="#FFD700" />
+              ))}
+            </View>
+            <Text style={styles.profilePoints}>{driverPoints} points</Text>
+          </View>
+
+          <View style={styles.profileActions}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -418,18 +511,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666666',
     fontFamily: 'Poppins',
-  },
-  customMarker: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  markerDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FF5252',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
   },
   swipeContainer: {
     alignItems: 'center',
@@ -543,5 +624,58 @@ const styles = StyleSheet.create({
     color: '#999999',
     fontFamily: 'Poppins',
     marginTop: 8,
+  },
+  profileScreen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 100,
+  },
+  profileHeader: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  profileAvatarLarge: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#E5E5E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  profileNameLarge: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#000000',
+    fontFamily: 'Poppins',
+    marginBottom: 12,
+  },
+  profilePoints: {
+    fontSize: 16,
+    color: '#666666',
+    fontFamily: 'Poppins',
+    marginTop: 8,
+  },
+  profileActions: {
+    paddingHorizontal: 20,
+    marginTop: 20,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    gap: 12,
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontFamily: 'Poppins',
   },
 });

@@ -14,6 +14,7 @@ import JobNotification from '../../components/JobNotification';
 import JobsScreen from '../../components/JobsScreen';
 import BoardScreen from '../../components/BoardScreen';
 import BottomNavigation from '../../components/BottomNavigation';
+import { supabase } from '../../lib/supabase';
 
 interface MapOnlineScreenProps {
   onGoOffline: () => void;
@@ -25,7 +26,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const [location, setLocation] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [showJobNotification, setShowJobNotification] = useState(false);
-  const [mapLoaded, setMapLoaded] = useState(false);
   const [currentTab, setCurrentTab] = useState<TabType>('map');
   const mapRef = useRef<any>(null);
 
@@ -43,7 +43,66 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
     }
   };
 
-  const handleToggleOffline = () => {
+  // Function to update driver location in Supabase
+  const updateDriverLocation = async (latitude: number, longitude: number) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('Updating location:', { latitude, longitude, userId: user.id });
+
+      // Use upsert to insert or update in one operation
+      const { data, error } = await supabase
+        .from('drivers_online')
+        .upsert({
+          userId: user.id,
+          latitude,
+          longitude,
+          status: true,
+          lastUpdated: new Date().toISOString(),
+        }, {
+          onConflict: 'userId'
+        });
+
+      if (error) {
+        console.error('Error upserting location:', error);
+      } else {
+        console.log('Location updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating driver location:', error);
+    }
+  };
+
+  // Function to set driver offline in database
+  const setDriverOfflineInDB = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No user found when trying to go offline');
+        return;
+      }
+
+      console.log('Setting driver offline for user:', user.id);
+      const { data, error } = await supabase
+        .from('drivers_online')
+        .update({ status: false })
+        .eq('userId', user.id);
+
+      if (error) {
+        console.error('Error setting driver offline in DB:', error);
+      } else {
+        console.log('Successfully set driver offline in DB:', data);
+      }
+    } catch (error) {
+      console.error('Error setting driver offline:', error);
+    }
+  };
+
+  const handleToggleOffline = async () => {
+    console.log('Toggle switch pressed - going offline');
+    await setDriverOfflineInDB();
+    console.log('Status set to false in database');
     setIsOnline(false);
     setTimeout(() => {
       onGoOffline();
@@ -105,17 +164,25 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
     })();
   }, []);
 
+  // Effect to update location in database when online
   useEffect(() => {
-    if (!mapLoaded) return;
+    if (!location) return;
 
-    const jobTimer = setTimeout(() => {
-      setShowJobNotification(true);
-    }, 5000);
+    // Initial location update
+    updateDriverLocation(location.latitude, location.longitude);
 
+    // Set up interval to update location every 10 seconds
+    const locationUpdateInterval = setInterval(() => {
+      if (location) {
+        updateDriverLocation(location.latitude, location.longitude);
+      }
+    }, 10000); // Update every 10 seconds
+
+    // Cleanup on unmount
     return () => {
-      clearTimeout(jobTimer);
+      clearInterval(locationUpdateInterval);
     };
-  }, [mapLoaded]);
+  }, [location]);
 
   const handleAcceptJob = () => {
     setShowJobNotification(false);
@@ -268,7 +335,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
                 showsTraffic={false}
                 showsIndoors={false}
                 loadingEnabled={true}
-                onMapReady={() => setMapLoaded(true)}
               >
                 <Marker
                   coordinate={{
