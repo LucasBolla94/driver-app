@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,14 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Dimensions,
+  SafeAreaView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface PhotoCaptureScreenProps {
   title: string;
@@ -25,43 +29,95 @@ export default function PhotoCaptureScreen({
   onCancel,
 }: PhotoCaptureScreenProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [cameraLaunched, setCameraLaunched] = useState(false);
 
   const requestCameraPermission = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Camera Permission',
-        'Camera permission is required to take photos'
-      );
+    try {
+      // Check current permission status first
+      const { status: existingStatus } = await ImagePicker.getCameraPermissionsAsync();
+      console.log('Current camera permission status:', existingStatus);
+
+      let finalStatus = existingStatus;
+
+      // If not granted, request permission
+      if (existingStatus !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        finalStatus = status;
+        console.log('Requested camera permission, new status:', finalStatus);
+      }
+
+      if (finalStatus !== 'granted') {
+        Alert.alert(
+          'Camera Permission Required',
+          'Please enable camera access in your device settings to take photos.',
+          [
+            {
+              text: 'Cancel',
+              onPress: onCancel,
+              style: 'cancel'
+            }
+          ]
+        );
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error requesting camera permission:', error);
+      Alert.alert('Error', 'Failed to request camera permission');
       return false;
     }
-    return true;
   };
 
   const handleTakePhoto = async () => {
+    console.log('Attempting to open camera...');
+
     const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      console.log('Camera permission denied');
+      return;
+    }
+
+    console.log('Camera permission granted, launching camera...');
 
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false, // No editing, direct camera only
         quality: 0.8,
+        cameraType: ImagePicker.CameraType.back,
       });
 
+      console.log('Camera result:', result);
+
       if (!result.canceled && result.assets[0]) {
+        console.log('Photo taken successfully:', result.assets[0].uri);
         setPhotoUri(result.assets[0].uri);
+      } else {
+        console.log('Camera was canceled or no photo taken');
+        // If user cancels camera, go back
+        onCancel();
       }
     } catch (error) {
       console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
+      onCancel();
     }
   };
 
-  const handleRetake = () => {
+  const handleRetake = async () => {
     setPhotoUri(null);
+    // Immediately open camera again
+    await handleTakePhoto();
   };
+
+  // Open camera automatically when component mounts
+  useEffect(() => {
+    if (!cameraLaunched) {
+      setCameraLaunched(true);
+      handleTakePhoto();
+    }
+  }, []);
 
   const handleConfirm = () => {
     if (photoUri) {
@@ -70,7 +126,7 @@ export default function PhotoCaptureScreen({
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
 
       {/* Header */}
@@ -86,59 +142,40 @@ export default function PhotoCaptureScreen({
       </View>
 
       {/* Content */}
-      <View style={styles.content}>
-        {!photoUri ? (
-          <>
-            {/* Instructions */}
-            <View style={styles.instructionContainer}>
-              <Ionicons name="camera-outline" size={64} color="#000000" />
-              <Text style={styles.instructionTitle}>Take a Photo</Text>
-              <Text style={styles.instructionText}>{instruction}</Text>
-            </View>
+      {!photoUri ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Opening camera...</Text>
+        </View>
+      ) : (
+        <View style={styles.content}>
+          {/* Photo Preview */}
+          <View style={styles.previewContainer}>
+            <Image source={{ uri: photoUri }} style={styles.previewImage} />
+          </View>
 
-            <View style={styles.spacer} />
-
-            {/* Camera Button */}
+          {/* Action Buttons */}
+          <View style={styles.actionsContainer}>
             <TouchableOpacity
-              style={styles.cameraButton}
-              onPress={handleTakePhoto}
+              style={styles.retakeButton}
+              onPress={handleRetake}
               activeOpacity={0.7}
             >
-              <Ionicons name="camera" size={32} color="#FFFFFF" />
-              <Text style={styles.cameraButtonText}>Open Camera</Text>
+              <Ionicons name="refresh" size={24} color="#000000" />
+              <Text style={styles.retakeButtonText}>Retake Photo</Text>
             </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            {/* Photo Preview */}
-            <View style={styles.previewContainer}>
-              <Image source={{ uri: photoUri }} style={styles.previewImage} />
-            </View>
 
-            {/* Action Buttons */}
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity
-                style={styles.retakeButton}
-                onPress={handleRetake}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="refresh" size={24} color="#000000" />
-                <Text style={styles.retakeButtonText}>Retake Photo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.confirmButton}
-                onPress={handleConfirm}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
-                <Text style={styles.confirmButtonText}>Use This Photo</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </View>
-    </View>
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={handleConfirm}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+              <Text style={styles.confirmButtonText}>Use This Photo</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -148,8 +185,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     paddingHorizontal: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
@@ -167,59 +204,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#000000',
     fontFamily: 'Poppins',
   },
   content: {
     flex: 1,
-    padding: 20,
+    padding: 16,
   },
-  instructionContainer: {
-    alignItems: 'center',
-  },
-  instructionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000000',
-    fontFamily: 'Poppins',
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  instructionText: {
-    fontSize: 16,
-    color: '#666666',
-    fontFamily: 'Poppins',
-    textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 20,
-  },
-  spacer: {
+  loadingContainer: {
     flex: 1,
-  },
-  cameraButton: {
-    flexDirection: 'row',
-    backgroundColor: '#000000',
-    borderRadius: 16,
-    paddingVertical: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: '#F5F5F5',
   },
-  cameraButtonText: {
+  loadingText: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '600',
+    color: '#666666',
     fontFamily: 'Poppins',
   },
   previewContainer: {
-    flex: 1,
+    height: SCREEN_HEIGHT * 0.55,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -227,7 +234,6 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%',
-    maxHeight: 500,
     borderRadius: 16,
     resizeMode: 'contain',
   },

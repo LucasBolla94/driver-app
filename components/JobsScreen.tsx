@@ -107,7 +107,7 @@ export default function JobsScreen() {
           amount: '£15.20',
           itemDescription: 'Alcohol - Wine Bottle',
           requiresAgeVerification: true,
-          collectStatus: 'pending',
+          collectStatus: 'completed',
           dropStatus: 'pending',
         },
       ];

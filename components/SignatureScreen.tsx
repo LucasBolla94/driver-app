@@ -6,10 +6,14 @@ import {
   TouchableOpacity,
   Alert,
   PanResponder,
+  SafeAreaView,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SignatureScreenProps {
   onComplete: (signatureData: string) => void;
@@ -28,6 +32,7 @@ export default function SignatureScreen({
   const [paths, setPaths] = useState<Point[][]>([]);
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
   const [hasSignature, setHasSignature] = useState(false);
+  const currentPathRef = useRef<Point[]>([]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -35,17 +40,26 @@ export default function SignatureScreen({
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
+        currentPathRef.current = [{ x: locationX, y: locationY }];
         setCurrentPath([{ x: locationX, y: locationY }]);
       },
       onPanResponderMove: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath((prev) => [...prev, { x: locationX, y: locationY }]);
+        currentPathRef.current = [...currentPathRef.current, { x: locationX, y: locationY }];
+        setCurrentPath([...currentPathRef.current]);
       },
       onPanResponderRelease: () => {
-        if (currentPath.length > 0) {
-          setPaths((prev) => [...prev, currentPath]);
-          setCurrentPath([]);
+        if (currentPathRef.current.length > 0) {
+          const newPath = [...currentPathRef.current];
+          console.log('Adding path with', newPath.length, 'points');
+          setPaths((prev) => {
+            const updated = [...prev, newPath];
+            console.log('Total paths now:', updated.length);
+            return updated;
+          });
           setHasSignature(true);
+          currentPathRef.current = [];
+          setCurrentPath([]);
         }
       },
     })
@@ -79,7 +93,7 @@ export default function SignatureScreen({
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
 
       {/* Header */}
@@ -108,20 +122,24 @@ export default function SignatureScreen({
         <View style={styles.canvasContainer} {...panResponder.panHandlers}>
           <Svg style={styles.svg}>
             {/* Draw completed paths */}
-            {paths.map((path, index) => (
-              <Path
-                key={index}
-                d={pathToSvgPath(path)}
-                stroke="#000000"
-                strokeWidth={3}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            ))}
+            {paths.map((path, index) => {
+              console.log(`Rendering path ${index} with ${path.length} points`);
+              return (
+                <Path
+                  key={`path-${index}`}
+                  d={pathToSvgPath(path)}
+                  stroke="#000000"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              );
+            })}
             {/* Draw current path */}
             {currentPath.length > 0 && (
               <Path
+                key="current-path"
                 d={pathToSvgPath(currentPath)}
                 stroke="#000000"
                 strokeWidth={3}
@@ -184,7 +202,7 @@ export default function SignatureScreen({
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -194,8 +212,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     paddingHorizontal: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
@@ -213,7 +231,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#000000',
     fontFamily: 'Poppins',
@@ -240,7 +258,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   canvasContainer: {
-    flex: 1,
+    height: SCREEN_HEIGHT * 0.45,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 2,

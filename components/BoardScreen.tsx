@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,29 +7,34 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
 interface AvailableJob {
   id: string;
   ref: string;
-  pickupAddress: string;
-  pickupPostcode: string;
-  pickupTime: string;
-  deliveryAddress: string;
-  deliveryPostcode: string;
-  deliveryTime: string;
+  collect_address: string;
+  collect_postcode: string;
+  collect_city: string;
+  collect_latitude: number;
+  collect_longitude: number;
+  dropoff_address: string;
+  dropoff_postcode: string;
+  dropoff_city: string;
+  dropoff_latitude: number;
+  dropoff_longitude: number;
   amount: string;
-  distance: string;
-  weight: string;
-  packageType: string;
-  customerName: string;
-  customerPhone: string;
+  status: string;
+  created_at: string;
+  distance?: string;
+  weight?: string;
+  packageType?: string;
   notes?: string;
-  postedAt: string;
 }
 
 const AVAILABLE_JOBS: AvailableJob[] = [
@@ -160,11 +165,9 @@ export default function BoardScreen() {
         showsVerticalScrollIndicator={false}
       >
         {AVAILABLE_JOBS.map((job) => (
-          <TouchableOpacity
+          <View
             key={job.id}
             style={styles.jobCard}
-            onPress={() => handleViewDetails(job)}
-            activeOpacity={0.7}
           >
             {/* Job Header */}
             <View style={styles.jobHeader}>
@@ -177,8 +180,14 @@ export default function BoardScreen() {
                   <Text style={styles.jobPosted}>{job.postedAt}</Text>
                 </View>
               </View>
-              <View style={styles.amountBadge}>
+              <View style={styles.amountContainer}>
                 <Text style={styles.amountText}>{job.amount}</Text>
+                <View style={styles.pointsBadge}>
+                  <Ionicons name="star" size={12} color="#FFB800" />
+                  <Text style={styles.pointsText}>
+                    {Math.round(parseFloat(job.amount.replace('£', '')) * 1)} pts
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -226,12 +235,19 @@ export default function BoardScreen() {
               </View>
             </View>
 
-            {/* View Details Button */}
-            <View style={styles.viewDetailsButton}>
-              <Text style={styles.viewDetailsText}>View Full Details</Text>
-              <Ionicons name="chevron-forward" size={16} color="#2196F3" />
-            </View>
-          </TouchableOpacity>
+            {/* Accept Job Button */}
+            <TouchableOpacity
+              style={styles.acceptJobButton}
+              onPress={() => {
+                setSelectedJob(job);
+                handleAcceptJob();
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.acceptJobText}>Accept Job</Text>
+            </TouchableOpacity>
+          </View>
         ))}
 
         {/* Empty state */}
@@ -441,16 +457,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
     marginTop: 2,
   },
-  amountBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+  amountContainer: {
+    alignItems: 'flex-end',
+    gap: 4,
   },
   amountText: {
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: '700',
     color: '#4CAF50',
+    fontFamily: 'Poppins',
+  },
+  pointsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  pointsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFB800',
     fontFamily: 'Poppins',
   },
   routeContainer: {
@@ -527,16 +556,24 @@ const styles = StyleSheet.create({
     color: '#666666',
     fontFamily: 'Poppins',
   },
-  viewDetailsButton: {
+  acceptJobButton: {
+    backgroundColor: '#4CAF50',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  viewDetailsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2196F3',
+  acceptJobText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
     fontFamily: 'Poppins',
   },
   emptyState: {
