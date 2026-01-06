@@ -8,11 +8,13 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import JobNotification from '../../components/JobNotification';
 import JobsScreen from '../../components/JobsScreen';
 import BoardScreen from '../../components/BoardScreen';
+import ProfileScreen from '../../components/ProfileScreen';
 import BottomNavigation from '../../components/BottomNavigation';
 import { supabase } from '../../lib/supabase';
 
@@ -112,6 +114,43 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const handleTabChange = (tab: TabType) => {
     setCurrentTab(tab);
   };
+
+  // Check if driver is still online in database
+  useEffect(() => {
+    const checkOnlineStatus = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.log('No user found, going offline');
+          onGoOffline();
+          return;
+        }
+
+        const { data: onlineData, error: onlineError } = await supabase
+          .from('drivers_online')
+          .select('status')
+          .eq('userId', user.id)
+          .single();
+
+        if (onlineData && !onlineError) {
+          const isCurrentlyOnline = onlineData.status === true;
+          console.log('Driver online status from DB:', isCurrentlyOnline);
+
+          if (!isCurrentlyOnline) {
+            console.log('Status is false, redirecting to offline screen');
+            onGoOffline();
+          }
+        } else {
+          console.log('No online status found, going offline');
+          onGoOffline();
+        }
+      } catch (error) {
+        console.error('Error checking online status:', error);
+      }
+    };
+
+    checkOnlineStatus();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -320,9 +359,13 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
               <MapView
                 ref={mapRef}
                 style={styles.map}
-                provider={PROVIDER_GOOGLE}
+                provider={Platform.select({
+                  android: PROVIDER_GOOGLE,
+                  ios: PROVIDER_DEFAULT,
+                  default: PROVIDER_DEFAULT,
+                })}
                 initialRegion={location}
-                customMapStyle={customMapStyle}
+                customMapStyle={Platform.OS === 'android' ? customMapStyle : undefined}
                 scrollEnabled={true}
                 zoomEnabled={true}
                 pitchEnabled={false}
@@ -335,6 +378,7 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
                 showsTraffic={false}
                 showsIndoors={false}
                 loadingEnabled={true}
+                mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
               >
                 <Marker
                   coordinate={{
@@ -374,13 +418,7 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
 
       {currentTab === 'board' && <BoardScreen />}
 
-      {currentTab === 'profile' && (
-        <View style={styles.emptyScreen}>
-          <Ionicons name="person-outline" size={64} color="#666666" />
-          <Text style={styles.emptyText}>Profile Screen</Text>
-          <Text style={styles.emptySubtext}>Coming soon</Text>
-        </View>
-      )}
+      {currentTab === 'profile' && <ProfileScreen />}
 
       {/* Bottom Navigation - Always visible */}
       <BottomNavigation currentTab={currentTab} onTabChange={handleTabChange} />

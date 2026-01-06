@@ -1,114 +1,260 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
-  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
+import JobDetailScreen from './JobDetailScreen';
 
-const { width } = Dimensions.get('window');
+type ViewMode = 'all' | 'sequence';
+
+interface Stop {
+  id: string;
+  type: 'collect' | 'drop';
+  address: string;
+  postcode: string;
+  jobRef: string;
+  itemDescription?: string;
+  requiresAgeVerification?: boolean;
+  collectStatus?: 'pending' | 'arrived' | 'completed';
+  dropStatus?: 'pending' | 'arrived' | 'completed';
+}
 
 interface Job {
   id: string;
   ref: string;
-  pickupAddress: string;
-  pickupPostcode: string;
-  deliveryAddress: string;
-  deliveryPostcode: string;
+  collectAddress: string;
+  collectPostcode: string;
+  dropAddress: string;
+  dropPostcode: string;
+  collectTime: string; // Expected collection time HH:MM
   amount: string;
-  distance: string;
-  status: 'accepted' | 'in_progress' | 'completed';
-  acceptedAt: string;
+  itemDescription: string;
+  requiresAgeVerification: boolean;
+  collectStatus: 'pending' | 'arrived' | 'completed';
+  dropStatus: 'pending' | 'arrived' | 'completed';
 }
 
-const SAMPLE_JOBS: Job[] = [
-  {
-    id: '1',
-    ref: 'JOB-2024-001',
-    pickupAddress: '221B Baker Street',
-    pickupPostcode: 'NW1 6XE',
-    deliveryAddress: '10 Downing Street',
-    deliveryPostcode: 'SW1A 2AA',
-    amount: '£12.50',
-    distance: '3.2 mi',
-    status: 'accepted',
-    acceptedAt: '10:30 AM',
-  },
-  {
-    id: '2',
-    ref: 'JOB-2024-002',
-    pickupAddress: 'Buckingham Palace',
-    pickupPostcode: 'SW1A 1AA',
-    deliveryAddress: 'Tower of London',
-    deliveryPostcode: 'EC3N 4AB',
-    amount: '£18.75',
-    distance: '5.8 mi',
-    status: 'in_progress',
-    acceptedAt: '09:15 AM',
-  },
-  {
-    id: '3',
-    ref: 'JOB-2024-003',
-    pickupAddress: 'King\'s Cross Station',
-    pickupPostcode: 'N1C 4AP',
-    deliveryAddress: 'Piccadilly Circus',
-    deliveryPostcode: 'W1J 9HS',
-    amount: '£15.20',
-    distance: '4.1 mi',
-    status: 'accepted',
-    acceptedAt: '11:45 AM',
-  },
-  {
-    id: '4',
-    ref: 'JOB-2024-004',
-    pickupAddress: 'Oxford Street, 235',
-    pickupPostcode: 'W1D 2LF',
-    deliveryAddress: 'Camden Market',
-    deliveryPostcode: 'NW1 8AH',
-    amount: '£10.00',
-    distance: '2.5 mi',
-    status: 'completed',
-    acceptedAt: '08:00 AM',
-  },
-];
-
 export default function JobsScreen() {
-  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  const toggleJob = (jobId: string) => {
-    setExpandedJob(expandedJob === jobId ? null : jobId);
-  };
+  useEffect(() => {
+    fetchActiveJobs();
 
-  const getStatusColor = (status: Job['status']) => {
-    switch (status) {
-      case 'accepted':
-        return '#4CAF50';
-      case 'in_progress':
-        return '#FF9800';
-      case 'completed':
-        return '#9E9E9E';
-      default:
-        return '#666666';
+    // Update time every second for countdown
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchActiveJobs = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // TODO: Fetch from Supabase jobs table
+      const mockJobs: Job[] = [
+        {
+          id: '1',
+          ref: 'JOB-001',
+          collectAddress: '221B Baker Street',
+          collectPostcode: 'NW1 6XE',
+          dropAddress: '10 Downing Street',
+          dropPostcode: 'SW1A 2AA',
+          collectTime: '14:30',
+          amount: '£12.50',
+          itemDescription: 'Package - Electronics',
+          requiresAgeVerification: false,
+          collectStatus: 'pending',
+          dropStatus: 'pending',
+        },
+        {
+          id: '2',
+          ref: 'JOB-002',
+          collectAddress: 'Buckingham Palace',
+          collectPostcode: 'SW1A 1AA',
+          dropAddress: 'Tower of London',
+          dropPostcode: 'EC3N 4AB',
+          collectTime: '15:45',
+          amount: '£18.75',
+          itemDescription: 'Document Envelope',
+          requiresAgeVerification: false,
+          collectStatus: 'completed',
+          dropStatus: 'pending',
+        },
+        {
+          id: '3',
+          ref: 'JOB-003',
+          collectAddress: 'Kings Cross Station',
+          collectPostcode: 'N1C 4AP',
+          dropAddress: 'Piccadilly Circus',
+          dropPostcode: 'W1J 9HS',
+          collectTime: '13:15',
+          amount: '£15.20',
+          itemDescription: 'Alcohol - Wine Bottle',
+          requiresAgeVerification: true,
+          collectStatus: 'pending',
+          dropStatus: 'pending',
+        },
+      ];
+
+      setJobs(mockJobs);
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusText = (status: Job['status']) => {
-    switch (status) {
-      case 'accepted':
-        return 'ACCEPTED';
-      case 'in_progress':
-        return 'IN PROGRESS';
-      case 'completed':
-        return 'COMPLETED';
-      default:
-        return status.toUpperCase();
+  const calculateTimeRemaining = (collectTime: string): { minutes: number; isLate: boolean; display: string } => {
+    const [hours, mins] = collectTime.split(':').map(Number);
+    const targetTime = new Date();
+    targetTime.setHours(hours, mins, 0, 0);
+
+    const diffMs = targetTime.getTime() - currentTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 0) {
+      const lateMinutes = Math.abs(diffMins);
+      return {
+        minutes: lateMinutes,
+        isLate: true,
+        display: `${lateMinutes}m LATE`,
+      };
+    } else {
+      const hours = Math.floor(diffMins / 60);
+      const minutes = diffMins % 60;
+      return {
+        minutes: diffMins,
+        isLate: false,
+        display: hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`,
+      };
     }
   };
+
+  const getJobProgress = (job: Job): string => {
+    if (job.collectStatus === 'completed' && job.dropStatus === 'completed') {
+      return 'Completed';
+    } else if (job.collectStatus === 'completed') {
+      return 'Collection Done - Awaiting Delivery';
+    } else if (job.collectStatus === 'arrived') {
+      return 'At Collection Point';
+    } else if (job.dropStatus === 'arrived') {
+      return 'At Drop-off Point';
+    } else {
+      return 'Ready to Start';
+    }
+  };
+
+  const handleJobPress = (job: Job) => {
+    setSelectedJob(job);
+  };
+
+  const handleStopPress = (stop: Stop) => {
+    setSelectedStop(stop);
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedStop(null);
+    setSelectedJob(null);
+    fetchActiveJobs();
+  };
+
+  const getStopsInSequence = (): Stop[] => {
+    const stops: Stop[] = [];
+
+    jobs.forEach((job) => {
+      stops.push({
+        id: `${job.id}-collect`,
+        type: 'collect',
+        address: job.collectAddress,
+        postcode: job.collectPostcode,
+        jobRef: job.ref,
+        itemDescription: job.itemDescription,
+        collectStatus: job.collectStatus,
+      });
+
+      stops.push({
+        id: `${job.id}-drop`,
+        type: 'drop',
+        address: job.dropAddress,
+        postcode: job.dropPostcode,
+        jobRef: job.ref,
+        itemDescription: job.itemDescription,
+        requiresAgeVerification: job.requiresAgeVerification,
+        dropStatus: job.dropStatus,
+      });
+    });
+
+    return stops;
+  };
+
+  const isStopCompleted = (stop: Stop): boolean => {
+    if (stop.type === 'collect') {
+      return stop.collectStatus === 'completed';
+    } else {
+      return stop.dropStatus === 'completed';
+    }
+  };
+
+  const isStopActive = (stop: Stop): boolean => {
+    if (stop.type === 'collect') {
+      return stop.collectStatus === 'arrived';
+    } else {
+      return stop.dropStatus === 'arrived';
+    }
+  };
+
+  const canStartStop = (index: number): boolean => {
+    if (index === 0) return true;
+    const stops = getStopsInSequence();
+    const previousStop = stops[index - 1];
+    return isStopCompleted(previousStop);
+  };
+
+  if (selectedStop) {
+    return <JobDetailScreen stop={selectedStop} onBack={handleCloseDetail} />;
+  }
+
+  if (selectedJob) {
+    // Find the current step for this job
+    const currentStop: Stop = selectedJob.collectStatus === 'completed'
+      ? {
+          id: `${selectedJob.id}-drop`,
+          type: 'drop',
+          address: selectedJob.dropAddress,
+          postcode: selectedJob.dropPostcode,
+          jobRef: selectedJob.ref,
+          itemDescription: selectedJob.itemDescription,
+          requiresAgeVerification: selectedJob.requiresAgeVerification,
+          dropStatus: selectedJob.dropStatus,
+        }
+      : {
+          id: `${selectedJob.id}-collect`,
+          type: 'collect',
+          address: selectedJob.collectAddress,
+          postcode: selectedJob.collectPostcode,
+          jobRef: selectedJob.ref,
+          itemDescription: selectedJob.itemDescription,
+          collectStatus: selectedJob.collectStatus,
+        };
+
+    return <JobDetailScreen stop={currentStop} onBack={handleCloseDetail} />;
+  }
 
   return (
     <View style={styles.container}>
@@ -116,141 +262,304 @@ export default function JobsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Jobs</Text>
+        <Text style={styles.headerTitle}>Jobs</Text>
         <View style={styles.headerBadge}>
           <Text style={styles.headerBadgeText}>
-            {SAMPLE_JOBS.filter((j) => j.status !== 'completed').length} Active
+            {jobs.length} Active
           </Text>
         </View>
       </View>
 
-      {/* Jobs List */}
+      {/* View Mode Selector */}
+      <View style={styles.viewModeContainer}>
+        <TouchableOpacity
+          style={[
+            styles.viewModeButton,
+            viewMode === 'all' && styles.viewModeButtonActive,
+          ]}
+          onPress={() => setViewMode('all')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="grid-outline"
+            size={20}
+            color={viewMode === 'all' ? '#FFFFFF' : '#666666'}
+          />
+          <Text
+            style={[
+              styles.viewModeText,
+              viewMode === 'all' && styles.viewModeTextActive,
+            ]}
+          >
+            All Jobs
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.viewModeButton,
+            viewMode === 'sequence' && styles.viewModeButtonActive,
+          ]}
+          onPress={() => setViewMode('sequence')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="list-outline"
+            size={20}
+            color={viewMode === 'sequence' ? '#FFFFFF' : '#666666'}
+          />
+          <Text
+            style={[
+              styles.viewModeText,
+              viewMode === 'sequence' && styles.viewModeTextActive,
+            ]}
+          >
+            Sequence
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {SAMPLE_JOBS.map((job) => (
-          <View key={job.id} style={styles.jobCard}>
-            {/* Job Header - Clickable */}
-            <TouchableOpacity
-              style={styles.jobHeader}
-              onPress={() => toggleJob(job.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.jobHeaderLeft}>
-                <View style={styles.jobIconContainer}>
-                  <Ionicons name="briefcase" size={20} color="#000000" />
-                </View>
-                <View style={styles.jobHeaderInfo}>
-                  <Text style={styles.jobRef}>{job.ref}</Text>
-                  <Text style={styles.jobTime}>{job.acceptedAt}</Text>
-                </View>
-              </View>
-
-              <View style={styles.jobHeaderRight}>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    { backgroundColor: getStatusColor(job.status) },
-                  ]}
-                >
-                  <Text style={styles.statusText}>{getStatusText(job.status)}</Text>
-                </View>
-                <Ionicons
-                  name={expandedJob === job.id ? 'chevron-up' : 'chevron-down'}
-                  size={24}
-                  color="#666666"
-                />
-              </View>
-            </TouchableOpacity>
-
-            {/* Job Details - Expandable */}
-            {expandedJob === job.id && (
-              <View style={styles.jobDetails}>
-                <View style={styles.divider} />
-
-                {/* Pickup Location */}
-                <View style={styles.locationSection}>
-                  <View style={styles.locationIconWrapper}>
-                    <View style={styles.pickupIcon}>
-                      <Ionicons name="location" size={18} color="#4CAF50" />
-                    </View>
-                  </View>
-                  <View style={styles.locationInfo}>
-                    <Text style={styles.locationLabel}>PICKUP</Text>
-                    <Text style={styles.locationAddress}>{job.pickupAddress}</Text>
-                    <Text style={styles.locationPostcode}>{job.pickupPostcode}</Text>
-                  </View>
-                </View>
-
-                {/* Route Line */}
-                <View style={styles.routeLine} />
-
-                {/* Delivery Location */}
-                <View style={styles.locationSection}>
-                  <View style={styles.locationIconWrapper}>
-                    <View style={styles.deliveryIcon}>
-                      <Ionicons name="location" size={18} color="#FF5252" />
-                    </View>
-                  </View>
-                  <View style={styles.locationInfo}>
-                    <Text style={styles.locationLabel}>DELIVERY</Text>
-                    <Text style={styles.locationAddress}>{job.deliveryAddress}</Text>
-                    <Text style={styles.locationPostcode}>{job.deliveryPostcode}</Text>
-                  </View>
-                </View>
-
-                {/* Job Info Grid */}
-                <View style={styles.infoGrid}>
-                  <View style={styles.infoCard}>
-                    <Ionicons name="cash-outline" size={20} color="#FFD700" />
-                    <Text style={styles.infoLabel}>Earnings</Text>
-                    <Text style={styles.infoValue}>{job.amount}</Text>
-                  </View>
-
-                  <View style={styles.infoCard}>
-                    <Ionicons name="navigate-outline" size={20} color="#2196F3" />
-                    <Text style={styles.infoLabel}>Distance</Text>
-                    <Text style={styles.infoValue}>{job.distance}</Text>
-                  </View>
-                </View>
-
-                {/* Action Button */}
-                {job.status === 'accepted' && (
-                  <TouchableOpacity style={styles.actionButton}>
-                    <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Arrived at Pickup</Text>
-                  </TouchableOpacity>
-                )}
-
-                {job.status === 'in_progress' && (
-                  <TouchableOpacity style={[styles.actionButton, styles.actionButtonProgress]}>
-                    <Ionicons name="flag" size={24} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Complete Delivery</Text>
-                  </TouchableOpacity>
-                )}
-
-                {job.status === 'completed' && (
-                  <View style={styles.completedBadge}>
-                    <Ionicons name="checkmark-done-circle" size={24} color="#4CAF50" />
-                    <Text style={styles.completedText}>Job Completed</Text>
-                  </View>
-                )}
-              </View>
-            )}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#000000" />
           </View>
-        ))}
-
-        {/* Empty state if no jobs */}
-        {SAMPLE_JOBS.length === 0 && (
+        ) : jobs.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="briefcase-outline" size={64} color="#CCCCCC" />
-            <Text style={styles.emptyText}>No jobs yet</Text>
+            <Text style={styles.emptyText}>No active jobs</Text>
             <Text style={styles.emptySubtext}>
               Accept jobs to see them here
             </Text>
           </View>
+        ) : viewMode === 'all' ? (
+          // ALL JOBS VIEW
+          jobs.map((job) => {
+            const timeInfo = calculateTimeRemaining(job.collectTime);
+            const progress = getJobProgress(job);
+
+            return (
+              <TouchableOpacity
+                key={job.id}
+                style={styles.jobCard}
+                onPress={() => handleJobPress(job)}
+                activeOpacity={0.7}
+              >
+                {/* Job Header */}
+                <View style={styles.jobHeader}>
+                  <View style={styles.jobRefContainer}>
+                    <Ionicons name="briefcase" size={20} color="#000000" />
+                    <Text style={styles.jobRef}>{job.ref}</Text>
+                  </View>
+                  <Text style={styles.jobAmount}>{job.amount}</Text>
+                </View>
+
+                {/* Collect Info */}
+                <View style={styles.locationRow}>
+                  <View style={styles.locationIcon}>
+                    <Ionicons name="arrow-up-circle" size={20} color="#4CAF50" />
+                  </View>
+                  <View style={styles.locationDetails}>
+                    <Text style={styles.locationLabel}>COLLECT</Text>
+                    <Text style={styles.locationAddress}>{job.collectAddress}</Text>
+                    <Text style={styles.locationPostcode}>{job.collectPostcode}</Text>
+                  </View>
+                </View>
+
+                {/* Separator */}
+                <View style={styles.locationDivider} />
+
+                {/* Drop Info */}
+                <View style={styles.locationRow}>
+                  <View style={styles.locationIcon}>
+                    <Ionicons name="arrow-down-circle" size={20} color="#FF5252" />
+                  </View>
+                  <View style={styles.locationDetails}>
+                    <Text style={styles.locationLabel}>DROP OFF</Text>
+                    <Text style={styles.locationAddress}>{job.dropAddress}</Text>
+                    <Text style={styles.locationPostcode}>{job.dropPostcode}</Text>
+                  </View>
+                </View>
+
+                {/* Time Info */}
+                <View style={styles.timeContainer}>
+                  <View style={styles.timeRow}>
+                    <Ionicons name="time-outline" size={18} color="#666666" />
+                    <Text style={styles.timeLabel}>Collect at {job.collectTime}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.countdownBadge,
+                      timeInfo.isLate && styles.countdownBadgeLate,
+                    ]}
+                  >
+                    <Ionicons
+                      name={timeInfo.isLate ? 'warning' : 'timer-outline'}
+                      size={16}
+                      color={timeInfo.isLate ? '#FFFFFF' : '#FF9800'}
+                    />
+                    <Text
+                      style={[
+                        styles.countdownText,
+                        timeInfo.isLate && styles.countdownTextLate,
+                      ]}
+                    >
+                      {timeInfo.display}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Progress Badge */}
+                <View style={styles.progressBadge}>
+                  <Ionicons
+                    name={
+                      job.collectStatus === 'completed' && job.dropStatus === 'completed'
+                        ? 'checkmark-circle'
+                        : 'radio-button-on'
+                    }
+                    size={16}
+                    color={
+                      job.collectStatus === 'completed' && job.dropStatus === 'completed'
+                        ? '#4CAF50'
+                        : '#FF9800'
+                    }
+                  />
+                  <Text style={styles.progressText}>{progress}</Text>
+                </View>
+
+                {/* Age Verification Badge */}
+                {job.requiresAgeVerification && (
+                  <View style={styles.ageWarning}>
+                    <Ionicons name="shield-checkmark" size={14} color="#FF9800" />
+                    <Text style={styles.ageWarningText}>Age Verification Required</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          // SEQUENCE VIEW
+          getStopsInSequence().map((stop, index) => {
+            const isCompleted = isStopCompleted(stop);
+            const isActive = isStopActive(stop);
+            const canStart = canStartStop(index);
+            const isDisabled = !canStart && !isCompleted && !isActive;
+
+            return (
+              <TouchableOpacity
+                key={stop.id}
+                style={[
+                  styles.stopCard,
+                  isCompleted && styles.stopCardCompleted,
+                  isActive && styles.stopCardActive,
+                  isDisabled && styles.stopCardDisabled,
+                ]}
+                onPress={() => !isDisabled && handleStopPress(stop)}
+                activeOpacity={isDisabled ? 1 : 0.7}
+                disabled={isDisabled}
+              >
+                <View style={styles.stopNumberContainer}>
+                  <View
+                    style={[
+                      styles.stopNumber,
+                      isCompleted && styles.stopNumberCompleted,
+                      isActive && styles.stopNumberActive,
+                    ]}
+                  >
+                    {isCompleted ? (
+                      <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.stopNumberText,
+                          isActive && styles.stopNumberTextActive,
+                        ]}
+                      >
+                        {index + 1}
+                      </Text>
+                    )}
+                  </View>
+                  {index < getStopsInSequence().length - 1 && (
+                    <View style={styles.stopConnector} />
+                  )}
+                </View>
+
+                <View style={styles.stopInfo}>
+                  <View style={styles.stopHeader}>
+                    <View
+                      style={[
+                        styles.stopTypeBadge,
+                        stop.type === 'collect'
+                          ? styles.stopTypeBadgeCollect
+                          : styles.stopTypeBadgeDrop,
+                      ]}
+                    >
+                      <Ionicons
+                        name={stop.type === 'collect' ? 'arrow-up' : 'arrow-down'}
+                        size={14}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.stopTypeBadgeText}>
+                        {stop.type === 'collect' ? 'COLLECT' : 'DROP OFF'}
+                      </Text>
+                    </View>
+                    <Text style={styles.stopJobRef}>{stop.jobRef}</Text>
+                  </View>
+
+                  <Text style={styles.stopAddress}>{stop.address}</Text>
+                  <Text style={styles.stopPostcode}>{stop.postcode}</Text>
+
+                  {stop.itemDescription && (
+                    <View style={styles.stopItemInfo}>
+                      <Ionicons name="cube-outline" size={14} color="#666666" />
+                      <Text style={styles.stopItemText}>{stop.itemDescription}</Text>
+                    </View>
+                  )}
+
+                  {stop.requiresAgeVerification && (
+                    <View style={styles.ageVerificationBadge}>
+                      <Ionicons name="shield-checkmark" size={14} color="#FF9800" />
+                      <Text style={styles.ageVerificationText}>
+                        Age Verification Required
+                      </Text>
+                    </View>
+                  )}
+
+                  {isCompleted && (
+                    <View style={styles.statusCompleted}>
+                      <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                      <Text style={styles.statusCompletedText}>Completed</Text>
+                    </View>
+                  )}
+
+                  {isActive && (
+                    <View style={styles.statusActive}>
+                      <Ionicons name="radio-button-on" size={16} color="#FF9800" />
+                      <Text style={styles.statusActiveText}>In Progress</Text>
+                    </View>
+                  )}
+
+                  {isDisabled && (
+                    <View style={styles.statusLocked}>
+                      <Ionicons name="lock-closed" size={14} color="#999999" />
+                      <Text style={styles.statusLockedText}>
+                        Complete previous stop first
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {!isDisabled && (
+                  <Ionicons name="chevron-forward" size={24} color="#999999" />
+                )}
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -291,18 +600,73 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: 'Poppins',
   },
+  viewModeContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  viewModeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#F5F5F5',
+    gap: 8,
+  },
+  viewModeButtonActive: {
+    backgroundColor: '#000000',
+  },
+  viewModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666666',
+    fontFamily: 'Poppins',
+  },
+  viewModeTextActive: {
+    color: '#FFFFFF',
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 120, // Extra padding for bottom navigation
   },
+  loadingContainer: {
+    paddingVertical: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#666666',
+    fontFamily: 'Poppins',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999999',
+    fontFamily: 'Poppins',
+    marginTop: 8,
+  },
+  // ALL JOBS VIEW STYLES
   jobCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
+    padding: 16,
     marginBottom: 16,
-    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -313,92 +677,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    marginBottom: 16,
   },
-  jobHeaderLeft: {
+  jobRefContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  jobIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F0F0F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  jobHeaderInfo: {
-    flex: 1,
+    gap: 8,
   },
   jobRef: {
     fontSize: 16,
     fontWeight: '700',
     color: '#000000',
     fontFamily: 'Poppins',
-    marginBottom: 2,
   },
-  jobTime: {
-    fontSize: 12,
-    color: '#666666',
-    fontFamily: 'Poppins',
-  },
-  jobHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 10,
+  jobAmount: {
+    fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#4CAF50',
     fontFamily: 'Poppins',
-    letterSpacing: 0.5,
   },
-  jobDetails: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginBottom: 20,
-  },
-  locationSection: {
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 12,
   },
-  locationIconWrapper: {
-    width: 40,
-    alignItems: 'center',
-    paddingTop: 2,
-  },
-  pickupIcon: {
+  locationIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deliveryIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFEBEE',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  locationInfo: {
+  locationDetails: {
     flex: 1,
-    paddingLeft: 12,
   },
   locationLabel: {
     fontSize: 10,
@@ -420,89 +731,250 @@ const styles = StyleSheet.create({
     color: '#666666',
     fontFamily: 'Poppins',
   },
-  routeLine: {
-    width: 2,
-    height: 20,
+  locationDivider: {
+    height: 1,
     backgroundColor: '#E0E0E0',
-    marginLeft: 19,
-    marginBottom: 8,
+    marginVertical: 8,
   },
-  infoGrid: {
+  timeContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 16,
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
   },
-  infoLabel: {
-    fontSize: 11,
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#666666',
     fontFamily: 'Poppins',
-    marginTop: 6,
-    marginBottom: 4,
   },
-  infoValue: {
-    fontSize: 18,
+  countdownBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  countdownBadgeLate: {
+    backgroundColor: '#FF5252',
+  },
+  countdownText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#000000',
+    color: '#FF9800',
     fontFamily: 'Poppins',
   },
-  actionButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingVertical: 16,
+  countdownTextLate: {
+    color: '#FFFFFF',
+  },
+  progressBadge: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  progressText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666666',
+    fontFamily: 'Poppins',
+  },
+  ageWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  ageWarningText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9800',
+    fontFamily: 'Poppins',
+  },
+  // SEQUENCE VIEW STYLES
+  stopCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    padding: 16,
+    gap: 16,
+  },
+  stopCardCompleted: {
+    opacity: 0.7,
+  },
+  stopCardActive: {
+    borderWidth: 2,
+    borderColor: '#FF9800',
+  },
+  stopCardDisabled: {
+    opacity: 0.5,
+  },
+  stopNumberContainer: {
+    alignItems: 'center',
+  },
+  stopNumber: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
-  actionButtonProgress: {
+  stopNumberCompleted: {
+    backgroundColor: '#4CAF50',
+  },
+  stopNumberActive: {
     backgroundColor: '#FF9800',
   },
-  actionButtonText: {
-    fontSize: 16,
+  stopNumberText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#666666',
+    fontFamily: 'Poppins',
+  },
+  stopNumberTextActive: {
+    color: '#FFFFFF',
+  },
+  stopConnector: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E0E0E0',
+    marginTop: 8,
+    minHeight: 20,
+  },
+  stopInfo: {
+    flex: 1,
+  },
+  stopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  stopTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  stopTypeBadgeCollect: {
+    backgroundColor: '#4CAF50',
+  },
+  stopTypeBadgeDrop: {
+    backgroundColor: '#FF5252',
+  },
+  stopTypeBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
     color: '#FFFFFF',
     fontFamily: 'Poppins',
+    letterSpacing: 0.5,
   },
-  completedBadge: {
+  stopJobRef: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666666',
+    fontFamily: 'Poppins',
+  },
+  stopAddress: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+    fontFamily: 'Poppins',
+    marginBottom: 4,
+  },
+  stopPostcode: {
+    fontSize: 13,
+    color: '#666666',
+    fontFamily: 'Poppins',
+    marginBottom: 8,
+  },
+  stopItemInfo: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
+    gap: 6,
+    marginTop: 8,
   },
-  completedText: {
-    fontSize: 16,
+  stopItemText: {
+    fontSize: 13,
+    color: '#666666',
+    fontFamily: 'Poppins',
+  },
+  ageVerificationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  ageVerificationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9800',
+    fontFamily: 'Poppins',
+  },
+  statusCompleted: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  statusCompletedText: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#4CAF50',
     fontFamily: 'Poppins',
   },
-  emptyState: {
-    flex: 1,
+  statusActive: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 100,
+    gap: 6,
+    marginTop: 8,
   },
-  emptyText: {
-    fontSize: 20,
+  statusActiveText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#666666',
+    color: '#FF9800',
     fontFamily: 'Poppins',
-    marginTop: 16,
   },
-  emptySubtext: {
-    fontSize: 14,
+  statusLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  statusLockedText: {
+    fontSize: 12,
     color: '#999999',
     fontFamily: 'Poppins',
-    marginTop: 8,
+    fontStyle: 'italic',
   },
 });

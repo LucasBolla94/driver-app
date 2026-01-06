@@ -12,12 +12,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import MapOnlineScreen from './map-online';
 import BottomNavigation from '../../components/BottomNavigation';
 import JobsScreen from '../../components/JobsScreen';
 import BoardScreen from '../../components/BoardScreen';
+import ProfileScreen from '../../components/ProfileScreen';
+import DriverAvatar from '../../components/DriverAvatar';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
@@ -33,20 +36,35 @@ const SWIPE_THRESHOLD = SWIPE_WIDTH - SWIPE_BUTTON_SIZE - (SWIPE_PILL_PADDING * 
 
 type TabType = 'map' | 'jobs' | 'board' | 'profile';
 
+interface LocationState {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
 export default function HomeScreen() {
   const [isOnline, setIsOnline] = useState(false);
-  const [location, setLocation] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const [location, setLocation] = useState<LocationState | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<TabType>('map');
   const [driverName, setDriverName] = useState('Loading...');
   const [driverPoints, setDriverPoints] = useState(0);
+  const [driverUserId, setDriverUserId] = useState<string>('');
+  const [driverProfileUrl, setDriverProfileUrl] = useState<string | null>(null);
   const mapRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
       try {
-        let { status } = await Location.requestForegroundPermissionsAsync();
+        // Request foreground permission
+        const { status } = await Location.requestForegroundPermissionsAsync();
+
+        if (!isMounted) return;
+
         if (status !== 'granted') {
           setErrorMsg('Permission to access location was denied');
           setLocation({
@@ -55,61 +73,86 @@ export default function HomeScreen() {
             latitudeDelta: 0.015,
             longitudeDelta: 0.015,
           });
-          Alert.alert(
-            'Location Permission Required',
-            'This app needs location access to show nearby jobs and track deliveries. Using default location.'
-          );
+
+          // Only show alert if mounted
+          if (isMounted) {
+            Alert.alert(
+              'Location Permission Required',
+              'This app needs location access to show nearby jobs and track deliveries. Using default location.'
+            );
+          }
           return;
         }
 
-        // Request background location permission for "always"
-        // Note: This may fail on iOS simulator or if permissions not properly configured
-        try {
-          const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-          if (backgroundStatus !== 'granted') {
-            // Background permission not granted, app will work with foreground only
-          }
-        } catch (error) {
-          // Silently fail - background permission is optional for basic functionality
+        // Get current location with timeout
+        const currentLocation = await Promise.race([
+          Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced, // Use Balanced instead of High for better compatibility
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Location timeout')), 10000)
+          )
+        ]).catch((error) => {
+          console.log('Location fetch error:', error);
+          return null;
+        });
+
+        if (!isMounted) return;
+
+        if (currentLocation && 'coords' in currentLocation) {
+          setLocation({
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          });
+
+          // Watch position updates
+          Location.watchPositionAsync(
+            {
+              accuracy: Location.Accuracy.Balanced,
+              timeInterval: 5000,
+              distanceInterval: 10,
+            },
+            (newLocation) => {
+              if (isMounted) {
+                setLocation({
+                  latitude: newLocation.coords.latitude,
+                  longitude: newLocation.coords.longitude,
+                  latitudeDelta: 0.015,
+                  longitudeDelta: 0.015,
+                });
+              }
+            }
+          ).catch((error) => {
+            console.log('Watch position error:', error);
+          });
+        } else {
+          // Fallback to default location
+          setLocation({
+            latitude: 40.7128,
+            longitude: -74.0060,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          });
         }
-
-        let currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-
-        setLocation({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        });
-
-        Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 10,
-          },
-          (newLocation) => {
-            setLocation({
-              latitude: newLocation.coords.latitude,
-              longitude: newLocation.coords.longitude,
-              latitudeDelta: 0.015,
-              longitudeDelta: 0.015,
-            });
-          }
-        );
       } catch (error) {
         console.error('Location error:', error);
-        setErrorMsg('Error getting location');
-        setLocation({
-          latitude: 40.7128,
-          longitude: -74.0060,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        });
+        if (isMounted) {
+          setErrorMsg('Error getting location');
+          setLocation({
+            latitude: 40.7128,
+            longitude: -74.0060,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          });
+        }
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -122,15 +165,18 @@ export default function HomeScreen() {
           // Fetch driver data from drivers table
           const { data: driverData, error } = await supabase
             .from('drivers')
-            .select('firstName, lastName, points')
+            .select('firstName, lastName, points, profile_url')
             .eq('userId', user.id)
             .single();
 
           if (driverData && !error) {
             setDriverName(`${driverData.firstName} ${driverData.lastName}`);
             setDriverPoints(driverData.points || 0);
+            setDriverUserId(user.id);
+            setDriverProfileUrl(driverData.profile_url || null);
           } else {
             setDriverName('Driver');
+            setDriverUserId(user.id);
           }
 
           // Check if driver is already online in drivers_online table
@@ -140,13 +186,18 @@ export default function HomeScreen() {
             .eq('userId', user.id)
             .single();
 
-          if (onlineData && !onlineError && onlineData.status === true) {
-            console.log('Driver is already online, setting isOnline to true');
-            setIsOnline(true);
-          } else {
-            // Ensure status is set to false if driver is offline
-            console.log('Driver is offline, ensuring status is false in database');
-            await setDriverOfflineInDB();
+          if (onlineData && !onlineError) {
+            // Set online status based on database value
+            const isCurrentlyOnline = onlineData.status === true;
+            console.log('Driver online status from DB:', isCurrentlyOnline);
+            setIsOnline(isCurrentlyOnline);
+
+            // Don't force offline - just read the current state
+            // The status will be updated only when user explicitly goes offline
+          } else if (onlineError) {
+            // Error or no record found - default to offline but don't update DB yet
+            console.log('No online status record found, defaulting to offline (not updating DB)');
+            setIsOnline(false);
           }
         }
       } catch (error) {
@@ -157,6 +208,42 @@ export default function HomeScreen() {
 
     fetchDriverData();
   }, []);
+
+  // Check online status periodically when on offline screen
+  useEffect(() => {
+    if (isOnline) return; // Don't check if already online
+
+    const checkOnlineStatus = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: onlineData, error: onlineError } = await supabase
+          .from('drivers_online')
+          .select('status')
+          .eq('userId', user.id)
+          .single();
+
+        if (onlineData && !onlineError) {
+          const isCurrentlyOnline = onlineData.status === true;
+          if (isCurrentlyOnline) {
+            console.log('Status is true in DB, redirecting to online screen');
+            setIsOnline(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking online status:', error);
+      }
+    };
+
+    // Check immediately
+    checkOnlineStatus();
+
+    // Check every 3 seconds
+    const interval = setInterval(checkOnlineStatus, 3000);
+
+    return () => clearInterval(interval);
+  }, [isOnline]);
 
   // Function to set driver offline in database
   const setDriverOfflineInDB = async () => {
@@ -173,15 +260,50 @@ export default function HomeScreen() {
     }
   };
 
-  // Effect to update location when online and set offline status when offline
-  useEffect(() => {
-    // Only run location updates when OFFLINE screen is visible
-    // When online, MapOnlineScreen handles location updates
-    if (!isOnline) {
-      // When going offline, update status in database
-      setDriverOfflineInDB();
+  const setDriverOnlineInDB = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No user found when trying to go online');
+        return false;
+      }
+
+      console.log('Setting driver online for user:', user.id);
+
+      // Use location if available, otherwise use default location
+      // The map-online screen will update with real-time location
+      const lat = location?.latitude || 0;
+      const lng = location?.longitude || 0;
+
+      console.log('Using location:', { latitude: lat, longitude: lng });
+
+      // Use upsert to insert or update - just set status to true
+      const { data, error } = await supabase
+        .from('drivers_online')
+        .upsert({
+          userId: user.id,
+          latitude: lat,
+          longitude: lng,
+          status: true,
+          lastUpdated: new Date().toISOString(),
+        }, {
+          onConflict: 'userId'
+        });
+
+      if (error) {
+        console.error('Error setting driver online in DB:', error);
+        Alert.alert('Error', 'Failed to go online. Please try again.');
+        return false;
+      } else {
+        console.log('Successfully set driver online in DB with status=true');
+        return true;
+      }
+    } catch (error) {
+      console.error('Error setting driver online:', error);
+      Alert.alert('Error', 'Failed to go online. Please try again.');
+      return false;
     }
-  }, [isOnline]);
+  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -192,17 +314,29 @@ export default function HomeScreen() {
         const newValue = Math.max(0, Math.min(gestureState.dx, SWIPE_THRESHOLD));
         slideAnim.setValue(newValue);
       },
-      onPanResponderRelease: (_, gestureState) => {
+      onPanResponderRelease: async (_, gestureState) => {
         const dragDistance = Math.max(0, Math.min(gestureState.dx, SWIPE_THRESHOLD));
 
         // If swiped more than 75%, complete the swipe and go ONLINE
         if (dragDistance >= SWIPE_THRESHOLD * 0.75) {
+          console.log('Swipe completed, attempting to go online...');
+          console.log('Location at swipe time:', location);
+
           Animated.timing(slideAnim, {
             toValue: SWIPE_THRESHOLD,
             duration: 200,
             useNativeDriver: false,
-          }).start(() => {
-            setIsOnline(true);
+          }).start(async () => {
+            // Save to database first
+            const success = await setDriverOnlineInDB();
+
+            if (success) {
+              console.log('Successfully went online, updating UI');
+              setIsOnline(true);
+            } else {
+              console.log('Failed to go online');
+            }
+
             setTimeout(() => {
               slideAnim.setValue(0);
             }, 200);
@@ -256,19 +390,27 @@ export default function HomeScreen() {
         <View style={styles.contentWrapper}>
           {/* Header Profile */}
           <View style={styles.header}>
-            <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={44} color="#000000" />
-            </View>
+            <DriverAvatar
+              userId={driverUserId}
+              profileUrl={driverProfileUrl}
+              size={120}
+              editable={false}
+              borderColor="#000000"
+              borderWidth={3}
+            />
             <View style={styles.profileInfo}>
               <Text style={styles.profileName}>{driverName}</Text>
               <View style={styles.ratingContainer}>
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons key={star} name="star" size={14} color="#FFD700" />
+                  <Ionicons key={star} name="star" size={16} color="#FFD700" />
                 ))}
               </View>
-              <Text style={styles.pointsText}>{driverPoints} points / jobs</Text>
+              <Text style={styles.pointsText}>{driverPoints} Nex Points</Text>
             </View>
           </View>
+
+          {/* Divider Line */}
+          <View style={styles.dividerLine} />
 
           {/* Status Badge */}
           <View style={styles.statusBadgeContainer}>
@@ -285,7 +427,11 @@ export default function HomeScreen() {
               <MapView
                 ref={mapRef}
                 style={styles.map}
-                provider={PROVIDER_GOOGLE}
+                provider={Platform.select({
+                  android: PROVIDER_GOOGLE,
+                  ios: PROVIDER_DEFAULT,
+                  default: PROVIDER_DEFAULT,
+                })}
                 initialRegion={location}
                 scrollEnabled={false}
                 zoomEnabled={false}
@@ -296,6 +442,7 @@ export default function HomeScreen() {
                 showsCompass={false}
                 showsScale={false}
                 loadingEnabled={true}
+                mapType={Platform.OS === 'ios' ? 'standard' : 'standard'}
               />
 
             ) : (
@@ -380,29 +527,7 @@ export default function HomeScreen() {
 
       {currentTab === 'board' && <BoardScreen />}
 
-      {currentTab === 'profile' && (
-        <View style={styles.profileScreen}>
-          <View style={styles.profileHeader}>
-            <View style={styles.profileAvatarLarge}>
-              <Ionicons name="person" size={64} color="#000000" />
-            </View>
-            <Text style={styles.profileNameLarge}>{driverName}</Text>
-            <View style={styles.ratingContainer}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Ionicons key={star} name="star" size={18} color="#FFD700" />
-              ))}
-            </View>
-            <Text style={styles.profilePoints}>{driverPoints} points</Text>
-          </View>
-
-          <View style={styles.profileActions}>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-              <Text style={styles.logoutButtonText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      {currentTab === 'profile' && <ProfileScreen />}
 
       {/* Bottom Navigation - Always visible */}
       <BottomNavigation currentTab={currentTab} onTabChange={handleTabChange} />
@@ -424,39 +549,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 70,
-    paddingBottom: 30,
+    paddingBottom: 20,
+    gap: 20,
   },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E5E5E5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+  dividerLine: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginHorizontal: 20,
+    marginBottom: 20,
   },
   profileInfo: {
     flex: 1,
     justifyContent: 'center',
   },
   profileName: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#000000',
     fontFamily: 'Poppins',
-    marginBottom: 6,
-    lineHeight: 22,
+    marginBottom: 8,
+    lineHeight: 28,
   },
   ratingContainer: {
     flexDirection: 'row',
-    marginBottom: 6,
-    gap: 2,
+    marginBottom: 8,
+    gap: 3,
   },
   pointsText: {
-    fontSize: 11,
-    color: '#999999',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666666',
     fontFamily: 'Poppins',
-    lineHeight: 16,
+    lineHeight: 20,
   },
   statusBadgeContainer: {
     alignItems: 'center',
@@ -491,7 +615,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#F5F5F5',
     height: height * 0.38,
-    marginBottom: 30,
+    marginBottom: 50,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
