@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
 
 export interface DriverData {
-  userId: string;
+  uid: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -30,9 +30,9 @@ export function useDriverData() {
       }
 
       const { data: driverInfo, error: fetchError } = await supabase
-        .from('drivers')
+        .from('drivers_uk')
         .select('*')
-        .eq('userId', user.id)
+        .eq('uid', user.id)
         .single();
 
       if (fetchError) {
@@ -43,7 +43,7 @@ export function useDriverData() {
       }
 
       setDriverData({
-        userId: user.id,
+        uid: user.id,
         firstName: driverInfo?.firstName || 'Driver',
         lastName: driverInfo?.lastName || '',
         email: user.email || '',

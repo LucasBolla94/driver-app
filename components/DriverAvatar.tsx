@@ -151,9 +151,9 @@ export default function DriverAvatar({
 
       // Update database with new profile_url
       const { error: updateError } = await supabase
-        .from('drivers')
+        .from('drivers_uk')
         .update({ profile_url: fileName })
-        .eq('userId', userId);
+        .eq('uid', userId);
 
       if (updateError) {
         console.error('Database update error:', updateError);

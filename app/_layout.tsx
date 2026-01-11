@@ -28,9 +28,9 @@ export default function RootLayout() {
           if (currentSession) {
             // Verify user is a driver
             const { data: driverData, error } = await supabase
-              .from('drivers')
-              .select('userId')
-              .eq('userId', currentSession.user.id)
+              .from('drivers_uk')
+              .select('uid')
+              .eq('uid', currentSession.user.id)
               .single();
 
             if (driverData && !error) {

@@ -52,11 +52,11 @@ export default function LoginScreen() {
         return;
       }
 
-      // Step 2: Check if user ID exists in drivers table
+      // Step 2: Check if user ID exists in drivers_uk table
       const { data: driverData, error: driverError } = await supabase
-        .from('drivers')
-        .select('userId')
-        .eq('userId', authData.user.id)
+        .from('drivers_uk')
+        .select('uid')
+        .eq('uid', authData.user.id)
         .single();
 
       if (driverError || !driverData) {

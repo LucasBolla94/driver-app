@@ -162,11 +162,11 @@ export default function HomeScreen() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
-          // Fetch driver data from drivers table
+          // Fetch driver data from drivers_uk table
           const { data: driverData, error } = await supabase
-            .from('drivers')
+            .from('drivers_uk')
             .select('firstName, lastName, points, profile_url')
-            .eq('userId', user.id)
+            .eq('uid', user.id)
             .single();
 
           if (driverData && !error) {

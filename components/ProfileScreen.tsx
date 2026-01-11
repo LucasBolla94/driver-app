@@ -110,7 +110,7 @@ export default function ProfileScreen() {
         <View style={styles.profileCard}>
           {/* Profile Photo */}
           <DriverAvatar
-            userId={driverData.userId}
+            userId={driverData.uid}
             profileUrl={driverData.profile_url}
             size={150}
             editable={true}
