@@ -15,7 +15,9 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location to show nearby jobs and track deliveries.",
         "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby jobs and track deliveries.",
         "NSLocationAlwaysUsageDescription": "This app needs your location always to track deliveries in the background.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -31,7 +33,14 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
-        "VIBRATE"
+        "VIBRATE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.bolla.driverapp",
       "config": {
@@ -74,6 +83,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "98e8a77c-eecc-4a3f-a832-bd2e198e6f3b"
+      }
     }
   }
 }

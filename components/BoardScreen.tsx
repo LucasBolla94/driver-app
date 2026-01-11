@@ -37,99 +37,44 @@ interface AvailableJob {
   notes?: string;
 }
 
-const AVAILABLE_JOBS: AvailableJob[] = [
-  {
-    id: '1',
-    ref: 'AVL-2024-101',
-    pickupAddress: 'Westfield Shopping Centre',
-    pickupPostcode: 'W12 7GF',
-    pickupTime: '16:00',
-    deliveryAddress: 'Canary Wharf Station',
-    deliveryPostcode: 'E14 5AB',
-    deliveryTime: '17:30',
-    amount: '£22.50',
-    distance: '8.5 mi',
-    weight: '5 kg',
-    packageType: 'Documents',
-    customerName: 'John Smith',
-    customerPhone: '+44 7700 900123',
-    notes: 'Call on arrival',
-    postedAt: '2 min ago',
-  },
-  {
-    id: '2',
-    ref: 'AVL-2024-102',
-    pickupAddress: 'Heathrow Terminal 5',
-    pickupPostcode: 'TW6 2GA',
-    pickupTime: '14:00',
-    deliveryAddress: 'St Pancras International',
-    deliveryPostcode: 'N1C 4QP',
-    deliveryTime: '15:45',
-    amount: '£35.00',
-    distance: '19.2 mi',
-    weight: '12 kg',
-    packageType: 'Luggage',
-    customerName: 'Sarah Johnson',
-    customerPhone: '+44 7700 900456',
-    postedAt: '5 min ago',
-  },
-  {
-    id: '3',
-    ref: 'AVL-2024-103',
-    pickupAddress: 'Harrods Department Store',
-    pickupPostcode: 'SW1X 7XL',
-    pickupTime: '12:30',
-    deliveryAddress: 'Selfridges Oxford Street',
-    deliveryPostcode: 'W1A 1AB',
-    deliveryTime: '13:15',
-    amount: '£18.75',
-    distance: '2.8 mi',
-    weight: '3 kg',
-    packageType: 'Retail',
-    customerName: 'Emma Wilson',
-    customerPhone: '+44 7700 900789',
-    notes: 'Fragile items - handle with care',
-    postedAt: '12 min ago',
-  },
-  {
-    id: '4',
-    ref: 'AVL-2024-104',
-    pickupAddress: 'Borough Market',
-    pickupPostcode: 'SE1 9AL',
-    pickupTime: '10:00',
-    deliveryAddress: 'Shoreditch High Street',
-    deliveryPostcode: 'E1 6JE',
-    deliveryTime: '11:00',
-    amount: '£15.50',
-    distance: '3.5 mi',
-    weight: '8 kg',
-    packageType: 'Food Delivery',
-    customerName: 'Michael Brown',
-    customerPhone: '+44 7700 900321',
-    postedAt: '18 min ago',
-  },
-  {
-    id: '5',
-    ref: 'AVL-2024-105',
-    pickupAddress: 'Emirates Stadium',
-    pickupPostcode: 'N7 7AJ',
-    pickupTime: '18:00',
-    deliveryAddress: 'Stamford Bridge',
-    deliveryPostcode: 'SW6 1HS',
-    deliveryTime: '19:30',
-    amount: '£28.00',
-    distance: '12.1 mi',
-    weight: '6 kg',
-    packageType: 'Equipment',
-    customerName: 'David Taylor',
-    customerPhone: '+44 7700 900654',
-    postedAt: '25 min ago',
-  },
-];
-
 export default function BoardScreen() {
+  const [jobs, setJobs] = useState<AvailableJob[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<AvailableJob | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+
+  const fetchJobs = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('id, ref, collect_address, collect_postcode, collect_city, collect_latitude, collect_longitude, dropoff_address, dropoff_postcode, dropoff_city, dropoff_latitude, dropoff_longitude, amount, status, created_at, distance, weight, notes')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching jobs:', error);
+        throw error;
+      }
+
+      setJobs(data || []);
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+
+    // Set up polling to check for new jobs or status changes every 10 seconds
+    const interval = setInterval(() => {
+      fetchJobs();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleViewDetails = (job: AvailableJob) => {
     setSelectedJob(job);
@@ -154,7 +99,7 @@ export default function BoardScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Available Jobs</Text>
         <View style={styles.headerBadge}>
-          <Text style={styles.headerBadgeText}>{AVAILABLE_JOBS.length} Jobs</Text>
+          <Text style={styles.headerBadgeText}>{jobs.length} Jobs</Text>
         </View>
       </View>
 
@@ -164,7 +109,14 @@ export default function BoardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {AVAILABLE_JOBS.map((job) => (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Loading jobs...</Text>
+          </View>
+        ) : (
+          <>
+            {jobs.map((job) => (
           <View
             key={job.id}
             style={styles.jobCard}
@@ -177,7 +129,12 @@ export default function BoardScreen() {
                 </View>
                 <View>
                   <Text style={styles.jobRef}>{job.ref}</Text>
-                  <Text style={styles.jobPosted}>{job.postedAt}</Text>
+                  <Text style={styles.jobPosted}>
+                    {new Date(job.created_at).toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Text>
                 </View>
               </View>
               <View style={styles.amountContainer}>
@@ -194,26 +151,26 @@ export default function BoardScreen() {
             {/* Route Info */}
             <View style={styles.routeContainer}>
               <View style={styles.routeLeft}>
-                {/* Pickup */}
+                {/* Collect */}
                 <View style={styles.locationRow}>
                   <View style={styles.pickupDot} />
                   <View style={styles.locationDetails}>
-                    <Text style={styles.locationLabel}>PICKUP • {job.pickupTime}</Text>
-                    <Text style={styles.locationAddress}>{job.pickupAddress}</Text>
-                    <Text style={styles.locationPostcode}>{job.pickupPostcode}</Text>
+                    <Text style={styles.locationLabel}>COLLECT</Text>
+                    <Text style={styles.locationAddress}>{job.collect_address}</Text>
+                    <Text style={styles.locationPostcode}>{job.collect_city} {job.collect_postcode}</Text>
                   </View>
                 </View>
 
                 {/* Connecting Line */}
                 <View style={styles.connectingLine} />
 
-                {/* Delivery */}
+                {/* Drop-off */}
                 <View style={styles.locationRow}>
                   <View style={styles.deliveryDot} />
                   <View style={styles.locationDetails}>
-                    <Text style={styles.locationLabel}>DELIVERY • {job.deliveryTime}</Text>
-                    <Text style={styles.locationAddress}>{job.deliveryAddress}</Text>
-                    <Text style={styles.locationPostcode}>{job.deliveryPostcode}</Text>
+                    <Text style={styles.locationLabel}>DROP-OFF</Text>
+                    <Text style={styles.locationAddress}>{job.dropoff_address}</Text>
+                    <Text style={styles.locationPostcode}>{job.dropoff_city} {job.dropoff_postcode}</Text>
                   </View>
                 </View>
               </View>
@@ -221,18 +178,18 @@ export default function BoardScreen() {
 
             {/* Job Details Grid */}
             <View style={styles.detailsGrid}>
-              <View style={styles.detailItem}>
-                <Ionicons name="navigate-outline" size={16} color="#666666" />
-                <Text style={styles.detailText}>{job.distance}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="scale-outline" size={16} color="#666666" />
-                <Text style={styles.detailText}>{job.weight}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="cube-outline" size={16} color="#666666" />
-                <Text style={styles.detailText}>{job.packageType}</Text>
-              </View>
+              {job.distance && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="navigate-outline" size={16} color="#666666" />
+                  <Text style={styles.detailText}>{job.distance}</Text>
+                </View>
+              )}
+              {job.weight && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="scale-outline" size={16} color="#666666" />
+                  <Text style={styles.detailText}>{job.weight}</Text>
+                </View>
+              )}
             </View>
 
             {/* Accept Job Button */}
@@ -250,13 +207,15 @@ export default function BoardScreen() {
           </View>
         ))}
 
-        {/* Empty state */}
-        {AVAILABLE_JOBS.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="grid-outline" size={64} color="#CCCCCC" />
-            <Text style={styles.emptyText}>No jobs available</Text>
-            <Text style={styles.emptySubtext}>Check back later for new opportunities</Text>
-          </View>
+            {/* Empty state */}
+            {jobs.length === 0 && (
+              <View style={styles.emptyState}>
+                <Ionicons name="grid-outline" size={64} color="#CCCCCC" />
+                <Text style={styles.emptyText}>No jobs available</Text>
+                <Text style={styles.emptySubtext}>Check back later for new opportunities</Text>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -296,55 +255,40 @@ export default function BoardScreen() {
                     <View style={styles.modalLocationCard}>
                       <View style={styles.modalLocationHeader}>
                         <Ionicons name="location" size={20} color="#4CAF50" />
-                        <Text style={styles.modalLocationLabel}>Pickup Location</Text>
+                        <Text style={styles.modalLocationLabel}>Collect Location</Text>
                       </View>
-                      <Text style={styles.modalLocationAddress}>{selectedJob.pickupAddress}</Text>
-                      <Text style={styles.modalLocationPostcode}>{selectedJob.pickupPostcode}</Text>
-                      <Text style={styles.modalLocationTime}>Pickup time: {selectedJob.pickupTime}</Text>
+                      <Text style={styles.modalLocationAddress}>{selectedJob.collect_address}</Text>
+                      <Text style={styles.modalLocationPostcode}>{selectedJob.collect_city} {selectedJob.collect_postcode}</Text>
                     </View>
 
                     <View style={styles.modalLocationCard}>
                       <View style={styles.modalLocationHeader}>
                         <Ionicons name="location" size={20} color="#FF5252" />
-                        <Text style={styles.modalLocationLabel}>Delivery Location</Text>
+                        <Text style={styles.modalLocationLabel}>Drop-off Location</Text>
                       </View>
-                      <Text style={styles.modalLocationAddress}>{selectedJob.deliveryAddress}</Text>
-                      <Text style={styles.modalLocationPostcode}>{selectedJob.deliveryPostcode}</Text>
-                      <Text style={styles.modalLocationTime}>Delivery by: {selectedJob.deliveryTime}</Text>
+                      <Text style={styles.modalLocationAddress}>{selectedJob.dropoff_address}</Text>
+                      <Text style={styles.modalLocationPostcode}>{selectedJob.dropoff_city} {selectedJob.dropoff_postcode}</Text>
                     </View>
                   </View>
 
                   {/* Job Info */}
                   <View style={styles.modalSection}>
                     <Text style={styles.sectionTitle}>Job Information</Text>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Distance:</Text>
-                      <Text style={styles.infoValue}>{selectedJob.distance}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Weight:</Text>
-                      <Text style={styles.infoValue}>{selectedJob.weight}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Package Type:</Text>
-                      <Text style={styles.infoValue}>{selectedJob.packageType}</Text>
-                    </View>
+                    {selectedJob.distance && (
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Distance:</Text>
+                        <Text style={styles.infoValue}>{selectedJob.distance}</Text>
+                      </View>
+                    )}
+                    {selectedJob.weight && (
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Weight:</Text>
+                        <Text style={styles.infoValue}>{selectedJob.weight}</Text>
+                      </View>
+                    )}
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>Earnings:</Text>
                       <Text style={styles.infoValueHighlight}>{selectedJob.amount}</Text>
-                    </View>
-                  </View>
-
-                  {/* Customer Info */}
-                  <View style={styles.modalSection}>
-                    <Text style={styles.sectionTitle}>Customer</Text>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Name:</Text>
-                      <Text style={styles.infoValue}>{selectedJob.customerName}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Phone:</Text>
-                      <Text style={styles.infoValue}>{selectedJob.customerPhone}</Text>
                     </View>
                   </View>
 
@@ -414,6 +358,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 100,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666666',
+    fontFamily: 'Poppins',
+    marginTop: 16,
   },
   jobCard: {
     backgroundColor: '#FFFFFF',
