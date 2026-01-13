@@ -55,6 +55,12 @@ export function useJobOffers() {
     try {
       setLoading(true);
 
+      console.log('🔍 ACCEPT OFFER DEBUG:', {
+        offerId,
+        jobId,
+        currentOffer: currentOffer,
+      });
+
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
       if (userError) {
@@ -78,21 +84,64 @@ export function useJobOffers() {
         throw offerError;
       }
 
+      // First, check if the job exists and its current state
+      const { data: existingJob, error: checkError } = await supabase
+        .from('jobs_uk')
+        .select('id, courierid, status, job_reference')
+        .eq('id', jobId)
+        .maybeSingle(); // Use maybeSingle instead of single to avoid error when 0 rows
+
+      console.log('📋 Checking existing job before update:', {
+        job_id: jobId,
+        existingJob,
+        checkError,
+      });
+
+      if (checkError) {
+        console.error('❌ Error checking job:', checkError);
+        throw new Error(`Database error: ${checkError.message}`);
+      }
+
+      if (!existingJob) {
+        console.error('❌ Job does not exist in jobs_uk table!');
+        console.error(`❌ job_offers_uk.job_id (${jobId}) does not match any jobs_uk.id`);
+        console.error('❌ The offer was created with an invalid job_id');
+        throw new Error('Job not found - job_offers_uk.job_id does not match jobs_uk.id');
+      }
+
+      if (existingJob.courierid && existingJob.courierid !== user.id) {
+        console.error('❌ Job already assigned to another driver:', existingJob.courierid);
+        throw new Error('Job already assigned to another driver');
+      }
+
+      console.log('📋 Updating job in jobs_uk:', {
+        job_id: jobId,
+        courierid: user.id,
+        status: 'signed',
+        assigned_at: new Date().toISOString(),
+      });
+
       const { data: jobData, error: jobError } = await supabase
         .from('jobs_uk')
         .update({
           courierid: user.id,
-          status: 'accepted',
+          status: 'signed',
           assigned_at: new Date().toISOString(),
         })
         .eq('id', jobId)
-        .is('courierid', null)
         .select();
 
       if (jobError) {
-        console.error('Error assigning job:', jobError);
+        console.error('❌ Error assigning job:', jobError);
         throw jobError;
       }
+
+      if (!jobData || jobData.length === 0) {
+        console.error('❌ No job was updated');
+        throw new Error('Failed to assign job');
+      }
+
+      console.log('✅ Job updated successfully in jobs_uk:', jobData[0]);
 
       try {
         stopVibration();
@@ -208,6 +257,41 @@ export function useJobOffers() {
 
   // Handle new job offer
   const handleNewOffer = async (offer: JobOffer) => {
+    console.log('🔔 NEW OFFER RECEIVED:', {
+      offer_id: offer.id,
+      job_id: offer.job_id,
+      driver_uid: offer.driver_uid,
+      status: offer.status,
+      price_driver: offer.price_driver,
+      collect_address: offer.collect_address,
+      dropoff_address: offer.dropoff_address,
+    });
+
+    // Verify if the job exists in jobs_uk
+    console.log('🔍 Attempting to fetch job with id:', offer.job_id);
+
+    const { data: jobExists, error: jobCheckError } = await supabase
+      .from('jobs_uk')
+      .select('id, job_reference, status, courierid')
+      .eq('id', offer.job_id)
+      .maybeSingle();
+
+    console.log('🔍 VERIFY JOB EXISTS - DETAILED:', {
+      searching_for_job_id: offer.job_id,
+      jobExists,
+      jobCheckError,
+      error_code: jobCheckError?.code,
+      error_message: jobCheckError?.message,
+      error_details: jobCheckError?.details,
+      valid: !!jobExists && !jobCheckError,
+    });
+
+    if (!jobExists) {
+      console.error('⚠️ WARNING: This offer has an invalid job_id!');
+      console.error(`⚠️ The job_id (${offer.job_id}) does not match any 'id' in jobs_uk table`);
+      console.error('⚠️ Accepting this offer will fail!');
+    }
+
     setCurrentOffer(offer);
     startVibration();
     startAutoRejectTimer(offer.id);

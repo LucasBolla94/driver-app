@@ -50,6 +50,7 @@ export default function JobsScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
+    console.log('📋 JobsScreen mounted - fetching jobs');
     fetchActiveJobs();
 
     // Update time every second for countdown
@@ -57,7 +58,16 @@ export default function JobsScreen() {
       setCurrentTime(new Date());
     }, 1000);
 
-    return () => clearInterval(interval);
+    // Refresh jobs every 5 seconds to catch newly accepted jobs
+    const refreshInterval = setInterval(() => {
+      console.log('📋 Auto-refreshing jobs...');
+      fetchActiveJobs();
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(refreshInterval);
+    };
   }, []);
 
   const fetchActiveJobs = async () => {
@@ -68,12 +78,11 @@ export default function JobsScreen() {
 
       console.log('📋 Fetching jobs accepted by driver:', user.id);
 
-      // Fetch jobs where courierid matches the logged-in user and status is 'accepted'
+      // Fetch all jobs for this driver and filter client-side to avoid enum issues
       const { data: jobsData, error } = await supabase
         .from('jobs_uk')
         .select('*')
         .eq('courierid', user.id)
-        .eq('status', 'accepted')
         .order('assigned_at', { ascending: false });
 
       if (error) {
@@ -81,15 +90,49 @@ export default function JobsScreen() {
         return;
       }
 
-      console.log('📋 Jobs fetched:', jobsData?.length || 0);
+      console.log('📋 Jobs fetched (before filter):', jobsData?.length || 0);
+
+      // Log all jobs to see what we got
+      if (jobsData && jobsData.length > 0) {
+        console.log('📋 All jobs data:', JSON.stringify(jobsData, null, 2));
+        jobsData.forEach((job, index) => {
+          console.log(`📋 Job ${index + 1}:`, {
+            id: job.id,
+            status: job.status,
+            courierid: job.courierid,
+            cancelled_at: job.cancelled_at,
+            completed_at: job.completed_at,
+            assigned_at: job.assigned_at,
+          });
+        });
+      }
 
       if (!jobsData || jobsData.length === 0) {
         setJobs([]);
         return;
       }
 
+      // Filter client-side for active jobs (signed, not completed, not cancelled)
+      const activeJobsData = jobsData.filter(job => {
+        const isSigned = job.status === 'signed';
+        const notCancelled = job.cancelled_at === null;
+        const notCompleted = job.completed_at === null;
+
+        console.log(`📋 Job ${job.id} filter check:`, {
+          status: job.status,
+          isSigned,
+          notCancelled,
+          notCompleted,
+          passes: isSigned && notCancelled && notCompleted
+        });
+
+        return isSigned && notCancelled && notCompleted;
+      });
+
+      console.log('📋 Active jobs (after filter):', activeJobsData.length);
+
       // Map jobs_uk data to Job interface
-      const mappedJobs: Job[] = jobsData.map((job) => ({
+      const mappedJobs: Job[] = activeJobsData.map((job) => ({
         id: job.id,
         ref: job.job_reference || 'N/A',
         collectAddress: job.collect_address,
