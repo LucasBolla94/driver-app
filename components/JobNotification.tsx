@@ -105,23 +105,86 @@ export default function JobNotification({
     };
   }, []);
 
-  const handleDismiss = () => {
-    // Stop sound and vibration
+  const handleAccept = () => {
     try {
-      player.pause();
-    } catch (error) {
-      // Ignore if player is already stopped
-    }
-    Vibration.cancel();
+      // Stop sound and vibration
+      try {
+        if (player && typeof player.pause === 'function') {
+          player.pause();
+        }
+      } catch (error) {
+        // Ignore
+      }
 
-    // Animate out and close
-    Animated.timing(slideAnim, {
-      toValue: 200,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      onAccept(); // For now both buttons just dismiss
-    });
+      try {
+        Vibration.cancel();
+      } catch (error) {
+        // Ignore
+      }
+
+      // Animate out and close
+      Animated.timing(slideAnim, {
+        toValue: 200,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        try {
+          onAccept();
+        } catch (error) {
+          console.error('Error calling onAccept:', error);
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleAccept:', error);
+
+      // Fallback - try to call onAccept anyway
+      try {
+        onAccept();
+      } catch (e) {
+        console.error('Error calling onAccept in fallback:', e);
+      }
+    }
+  };
+
+  const handleReject = () => {
+    try {
+      // Stop sound and vibration
+      try {
+        if (player && typeof player.pause === 'function') {
+          player.pause();
+        }
+      } catch (error) {
+        // Ignore
+      }
+
+      try {
+        Vibration.cancel();
+      } catch (error) {
+        // Ignore
+      }
+
+      // Animate out and close
+      Animated.timing(slideAnim, {
+        toValue: 200,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        try {
+          onReject();
+        } catch (error) {
+          console.error('Error calling onReject:', error);
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleReject:', error);
+
+      // Even if animation fails, still call onReject
+      try {
+        onReject();
+      } catch (e) {
+        console.error('Error calling onReject in fallback:', e);
+      }
+    }
   };
 
   return (
@@ -216,7 +279,7 @@ export default function JobNotification({
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.button, styles.rejectButton]}
-            onPress={handleDismiss}
+            onPress={handleReject}
             activeOpacity={0.8}
           >
             <Ionicons name="close-circle-outline" size={20} color="#FF5252" />
@@ -225,7 +288,7 @@ export default function JobNotification({
 
           <TouchableOpacity
             style={[styles.button, styles.acceptButton]}
-            onPress={handleDismiss}
+            onPress={handleAccept}
             activeOpacity={0.8}
           >
             <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />

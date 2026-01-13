@@ -66,53 +66,45 @@ export default function JobsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // TODO: Fetch from Supabase jobs table
-      const mockJobs: Job[] = [
-        {
-          id: '1',
-          ref: 'JOB-001',
-          collectAddress: '221B Baker Street',
-          collectPostcode: 'NW1 6XE',
-          dropAddress: '10 Downing Street',
-          dropPostcode: 'SW1A 2AA',
-          collectTime: '14:30',
-          amount: '£12.50',
-          itemDescription: 'Package - Electronics',
-          requiresAgeVerification: false,
-          collectStatus: 'pending',
-          dropStatus: 'pending',
-        },
-        {
-          id: '2',
-          ref: 'JOB-002',
-          collectAddress: 'Buckingham Palace',
-          collectPostcode: 'SW1A 1AA',
-          dropAddress: 'Tower of London',
-          dropPostcode: 'EC3N 4AB',
-          collectTime: '15:45',
-          amount: '£18.75',
-          itemDescription: 'Document Envelope',
-          requiresAgeVerification: false,
-          collectStatus: 'completed',
-          dropStatus: 'pending',
-        },
-        {
-          id: '3',
-          ref: 'JOB-003',
-          collectAddress: 'Kings Cross Station',
-          collectPostcode: 'N1C 4AP',
-          dropAddress: 'Piccadilly Circus',
-          dropPostcode: 'W1J 9HS',
-          collectTime: '13:15',
-          amount: '£15.20',
-          itemDescription: 'Alcohol - Wine Bottle',
-          requiresAgeVerification: true,
-          collectStatus: 'completed',
-          dropStatus: 'pending',
-        },
-      ];
+      console.log('📋 Fetching jobs accepted by driver:', user.id);
 
-      setJobs(mockJobs);
+      // Fetch jobs where courierid matches the logged-in user and status is 'accepted'
+      const { data: jobsData, error } = await supabase
+        .from('jobs_uk')
+        .select('*')
+        .eq('courierid', user.id)
+        .eq('status', 'accepted')
+        .order('assigned_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching jobs:', error);
+        return;
+      }
+
+      console.log('📋 Jobs fetched:', jobsData?.length || 0);
+
+      if (!jobsData || jobsData.length === 0) {
+        setJobs([]);
+        return;
+      }
+
+      // Map jobs_uk data to Job interface
+      const mappedJobs: Job[] = jobsData.map((job) => ({
+        id: job.id,
+        ref: job.job_reference || 'N/A',
+        collectAddress: job.collect_address,
+        collectPostcode: job.collect_address.split(',').pop()?.trim() || '',
+        dropAddress: job.dropoff_address,
+        dropPostcode: job.dropoff_address.split(',').pop()?.trim() || '',
+        collectTime: job.collect_time || 'ASAP',
+        amount: `£${job.driver_price?.toFixed(2) || '0.00'}`,
+        itemDescription: job.package_size || 'Package',
+        requiresAgeVerification: job.age_restricted || false,
+        collectStatus: job.collect_timestamp ? 'completed' : 'pending',
+        dropStatus: job.dropoff_timestamp ? 'completed' : 'pending',
+      }));
+
+      setJobs(mappedJobs);
     } catch (error) {
       console.error('Error fetching jobs:', error);
     } finally {

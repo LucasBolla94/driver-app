@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import JobNotification from '../../components/JobNotification';
@@ -18,6 +18,7 @@ import ProfileScreen from '../../components/ProfileScreen';
 import BottomNavigation from '../../components/BottomNavigation';
 import { supabase } from '../../lib/supabase';
 import { useJobOffers } from '../../hooks/useJobOffers';
+import { GOOGLE_MAPS_API_KEY } from '../../config/maps';
 
 interface MapOnlineScreenProps {
   onGoOffline: () => void;
@@ -29,15 +30,107 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const [location, setLocation] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [currentTab, setCurrentTab] = useState<TabType>('map');
+  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
   const mapRef = useRef<any>(null);
 
   // Use job offers hook
   const { currentOffer, loading: offerLoading, acceptOffer, rejectOffer } = useJobOffers();
 
-  // Debug: Log quando currentOffer mudar
   useEffect(() => {
-    console.log('🔍 MAP-ONLINE - currentOffer changed:', currentOffer);
+    // When offer arrives, switch to map tab and calculate route
+    if (currentOffer) {
+      setCurrentTab('map');
+      calculateRoute();
+      fitMarkersToMap();
+    } else {
+      setRouteCoordinates([]);
+    }
   }, [currentOffer]);
+
+  // Calculate route using Google Directions API
+  const calculateRoute = async () => {
+    if (!currentOffer) return;
+
+    try {
+      const origin = `${currentOffer.collect_latitude},${currentOffer.collect_longitude}`;
+      const destination = `${currentOffer.dropoff_latitude},${currentOffer.dropoff_longitude}`;
+
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.routes && data.routes.length > 0) {
+        const points = decodePolyline(data.routes[0].overview_polyline.points);
+        setRouteCoordinates(points);
+      }
+    } catch (error) {
+      console.error('Error calculating route:', error);
+    }
+  };
+
+  // Decode Google polyline
+  const decodePolyline = (encoded: string) => {
+    const points: any[] = [];
+    let index = 0;
+    const len = encoded.length;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < len) {
+      let b;
+      let shift = 0;
+      let result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lng += dlng;
+
+      points.push({
+        latitude: lat / 1e5,
+        longitude: lng / 1e5,
+      });
+    }
+
+    return points;
+  };
+
+  // Fit map to show collect and dropoff markers
+  const fitMarkersToMap = () => {
+    if (!mapRef.current || !currentOffer) return;
+
+    setTimeout(() => {
+      mapRef.current.fitToCoordinates(
+        [
+          {
+            latitude: currentOffer.collect_latitude!,
+            longitude: currentOffer.collect_longitude!,
+          },
+          {
+            latitude: currentOffer.dropoff_latitude!,
+            longitude: currentOffer.dropoff_longitude!,
+          },
+        ],
+        {
+          edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
+          animated: true,
+        }
+      );
+    }, 500);
+  };
 
   const centerMapOnUser = () => {
     if (mapRef.current && location) {
@@ -59,8 +152,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      console.log('Updating location:', { latitude, longitude, userId: user.id });
-
       // Update location in drivers_uk table
       const { error } = await supabase
         .from('drivers_uk')
@@ -74,8 +165,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
 
       if (error) {
         console.error('Error updating location:', error);
-      } else {
-        console.log('Location updated successfully in drivers_uk');
       }
     } catch (error) {
       console.error('Error updating driver location:', error);
@@ -86,12 +175,8 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const setDriverOfflineInDB = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('No user found when trying to go offline');
-        return;
-      }
+      if (!user) return;
 
-      console.log('Setting driver offline for user:', user.id);
       const { error } = await supabase
         .from('drivers_uk')
         .update({
@@ -104,8 +189,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
 
       if (error) {
         console.error('Error setting driver offline in DB:', error);
-      } else {
-        console.log('Successfully set driver offline in drivers_uk');
       }
     } catch (error) {
       console.error('Error setting driver offline:', error);
@@ -113,9 +196,7 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   };
 
   const handleToggleOffline = async () => {
-    console.log('Toggle switch pressed - going offline');
     await setDriverOfflineInDB();
-    console.log('Status set to false in database');
     setIsOnline(false);
     setTimeout(() => {
       onGoOffline();
@@ -132,7 +213,6 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-          console.log('No user found, going offline');
           onGoOffline();
           return;
         }
@@ -145,14 +225,11 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
 
         if (driverData && !error) {
           const isCurrentlyOnline = driverData.online_status === 'online';
-          console.log('Driver online status from DB:', isCurrentlyOnline);
 
           if (!isCurrentlyOnline) {
-            console.log('Status is offline, redirecting to offline screen');
             onGoOffline();
           }
         } else {
-          console.log('No driver data found, going offline');
           onGoOffline();
         }
       } catch (error) {
@@ -237,19 +314,21 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const handleAcceptJob = async () => {
     if (!currentOffer) return;
 
-    const success = await acceptOffer(currentOffer.id, currentOffer.job_id);
-    if (success) {
-      console.log('✅ Job accepted successfully!');
+    try {
+      await acceptOffer(currentOffer.id, currentOffer.job_id);
       // TODO: Navigate to job details screen
+    } catch (error) {
+      console.error('Error in handleAcceptJob:', error);
     }
   };
 
   const handleRejectJob = async () => {
     if (!currentOffer) return;
 
-    const success = await rejectOffer(currentOffer.id);
-    if (success) {
-      console.log('❌ Job rejected');
+    try {
+      await rejectOffer(currentOffer.id);
+    } catch (error) {
+      console.error('Error in handleRejectJob:', error);
     }
   };
 
@@ -388,7 +467,7 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
                 customMapStyle={Platform.OS === 'android' ? customMapStyle : undefined}
                 scrollEnabled={true}
                 zoomEnabled={true}
-                pitchEnabled={false}
+                pitchEnabled={true}
                 rotateEnabled={true}
                 showsUserLocation={false}
                 showsMyLocationButton={false}
@@ -400,6 +479,7 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
                 loadingEnabled={true}
                 mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
               >
+                {/* Driver Location Marker */}
                 <Marker
                   coordinate={{
                     latitude: location.latitude,
@@ -411,6 +491,49 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
                     <View style={styles.markerInner} />
                   </View>
                 </Marker>
+
+                {/* Collect Marker */}
+                {currentOffer && currentOffer.collect_latitude && currentOffer.collect_longitude && (
+                  <Marker
+                    coordinate={{
+                      latitude: currentOffer.collect_latitude,
+                      longitude: currentOffer.collect_longitude,
+                    }}
+                    title="Collect"
+                    description={currentOffer.collect_address}
+                    pinColor="#4CAF50"
+                  >
+                    <View style={styles.collectMarker}>
+                      <Ionicons name="arrow-up-circle" size={36} color="#4CAF50" />
+                    </View>
+                  </Marker>
+                )}
+
+                {/* Dropoff Marker */}
+                {currentOffer && currentOffer.dropoff_latitude && currentOffer.dropoff_longitude && (
+                  <Marker
+                    coordinate={{
+                      latitude: currentOffer.dropoff_latitude,
+                      longitude: currentOffer.dropoff_longitude,
+                    }}
+                    title="Drop Off"
+                    description={currentOffer.dropoff_address}
+                    pinColor="#FF5252"
+                  >
+                    <View style={styles.dropoffMarker}>
+                      <Ionicons name="arrow-down-circle" size={36} color="#FF5252" />
+                    </View>
+                  </Marker>
+                )}
+
+                {/* Route Polyline */}
+                {routeCoordinates.length > 0 && (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeWidth={4}
+                    strokeColor="#2196F3"
+                  />
+                )}
               </MapView>
             ) : (
               <View style={styles.mapPlaceholder}>
@@ -420,14 +543,14 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
           </View>
 
           {/* Job Notification */}
-          {currentOffer && currentOffer.job && (
+          {currentOffer && (
             <JobNotification
-              pickupAddress={`${currentOffer.job.collect_address}, ${currentOffer.job.collect_postcode}`}
-              pickupTime="ASAP"
-              deliveryAddress={`${currentOffer.job.dropoff_address}, ${currentOffer.job.dropoff_postcode}`}
-              deliveryTime="TBD"
-              amount={currentOffer.job.amount}
-              distance={currentOffer.job.distance || 'N/A'}
+              pickupAddress={currentOffer.collect_address}
+              pickupTime={currentOffer.collect_time_after || 'ASAP'}
+              deliveryAddress={currentOffer.dropoff_address}
+              deliveryTime={currentOffer.dropoff_time_before || 'TBD'}
+              amount={currentOffer.price_driver.toFixed(2)}
+              distance={currentOffer.distance || 'N/A'}
               multipleDrops={false}
               onAccept={handleAcceptJob}
               onReject={handleRejectJob}
@@ -527,6 +650,26 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     backgroundColor: '#FFD700',
+  },
+  collectMarker: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  dropoffMarker: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   emptyScreen: {
     flex: 1,
