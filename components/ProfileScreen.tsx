@@ -121,7 +121,7 @@ export default function ProfileScreen() {
 
           {/* User Info */}
           <Text style={styles.userName}>
-            {driverData.firstName} {driverData.lastName}
+            {driverData.first_name} {driverData.last_name}
           </Text>
           <Text style={styles.userEmail}>{driverData.email}</Text>
           <Text style={styles.userPhone}>{driverData.phone}</Text>

@@ -4,8 +4,8 @@ import { router } from 'expo-router';
 
 export interface DriverData {
   uid: string;
-  firstName: string;
-  lastName: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone: string;
   profile_url?: string | null;
@@ -44,8 +44,8 @@ export function useDriverData() {
 
       setDriverData({
         uid: user.id,
-        firstName: driverInfo?.firstName || 'Driver',
-        lastName: driverInfo?.lastName || '',
+        first_name: driverInfo?.first_name || 'Driver',
+        last_name: driverInfo?.last_name || '',
         email: user.email || '',
         phone: driverInfo?.phone || '',
         profile_url: driverInfo?.profile_url,

@@ -17,6 +17,7 @@ import BoardScreen from '../../components/BoardScreen';
 import ProfileScreen from '../../components/ProfileScreen';
 import BottomNavigation from '../../components/BottomNavigation';
 import { supabase } from '../../lib/supabase';
+import { useJobOffers } from '../../hooks/useJobOffers';
 
 interface MapOnlineScreenProps {
   onGoOffline: () => void;
@@ -27,9 +28,16 @@ type TabType = 'map' | 'jobs' | 'board' | 'profile';
 export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
   const [location, setLocation] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [showJobNotification, setShowJobNotification] = useState(false);
   const [currentTab, setCurrentTab] = useState<TabType>('map');
   const mapRef = useRef<any>(null);
+
+  // Use job offers hook
+  const { currentOffer, loading: offerLoading, acceptOffer, rejectOffer } = useJobOffers();
+
+  // Debug: Log quando currentOffer mudar
+  useEffect(() => {
+    console.log('🔍 MAP-ONLINE - currentOffer changed:', currentOffer);
+  }, [currentOffer]);
 
   const centerMapOnUser = () => {
     if (mapRef.current && location) {
@@ -53,23 +61,21 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
 
       console.log('Updating location:', { latitude, longitude, userId: user.id });
 
-      // Use upsert to insert or update in one operation
-      const { data, error } = await supabase
-        .from('drivers_online')
-        .upsert({
-          userId: user.id,
-          latitude,
-          longitude,
-          status: true,
-          lastUpdated: new Date().toISOString(),
-        }, {
-          onConflict: 'userId'
-        });
+      // Update location in drivers_uk table
+      const { error } = await supabase
+        .from('drivers_uk')
+        .update({
+          online_status: 'online',
+          online_latitude: latitude,
+          online_longitude: longitude,
+          last_location_update: new Date().toISOString(),
+        })
+        .eq('uid', user.id);
 
       if (error) {
-        console.error('Error upserting location:', error);
+        console.error('Error updating location:', error);
       } else {
-        console.log('Location updated successfully');
+        console.log('Location updated successfully in drivers_uk');
       }
     } catch (error) {
       console.error('Error updating driver location:', error);
@@ -86,15 +92,20 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
       }
 
       console.log('Setting driver offline for user:', user.id);
-      const { data, error } = await supabase
-        .from('drivers_online')
-        .update({ status: false })
-        .eq('userId', user.id);
+      const { error } = await supabase
+        .from('drivers_uk')
+        .update({
+          online_status: 'offline',
+          online_latitude: null,
+          online_longitude: null,
+          last_location_update: new Date().toISOString(),
+        })
+        .eq('uid', user.id);
 
       if (error) {
         console.error('Error setting driver offline in DB:', error);
       } else {
-        console.log('Successfully set driver offline in DB:', data);
+        console.log('Successfully set driver offline in drivers_uk');
       }
     } catch (error) {
       console.error('Error setting driver offline:', error);
@@ -126,22 +137,22 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
           return;
         }
 
-        const { data: onlineData, error: onlineError } = await supabase
-          .from('drivers_online')
-          .select('status')
-          .eq('userId', user.id)
+        const { data: driverData, error } = await supabase
+          .from('drivers_uk')
+          .select('online_status')
+          .eq('uid', user.id)
           .single();
 
-        if (onlineData && !onlineError) {
-          const isCurrentlyOnline = onlineData.status === true;
+        if (driverData && !error) {
+          const isCurrentlyOnline = driverData.online_status === 'online';
           console.log('Driver online status from DB:', isCurrentlyOnline);
 
           if (!isCurrentlyOnline) {
-            console.log('Status is false, redirecting to offline screen');
+            console.log('Status is offline, redirecting to offline screen');
             onGoOffline();
           }
         } else {
-          console.log('No online status found, going offline');
+          console.log('No driver data found, going offline');
           onGoOffline();
         }
       } catch (error) {
@@ -223,14 +234,23 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
     };
   }, [location]);
 
-  const handleAcceptJob = () => {
-    setShowJobNotification(false);
-    console.log('Job aceito!');
+  const handleAcceptJob = async () => {
+    if (!currentOffer) return;
+
+    const success = await acceptOffer(currentOffer.id, currentOffer.job_id);
+    if (success) {
+      console.log('✅ Job accepted successfully!');
+      // TODO: Navigate to job details screen
+    }
   };
 
-  const handleRejectJob = () => {
-    setShowJobNotification(false);
-    console.log('Job rejeitado!');
+  const handleRejectJob = async () => {
+    if (!currentOffer) return;
+
+    const success = await rejectOffer(currentOffer.id);
+    if (success) {
+      console.log('❌ Job rejected');
+    }
   };
 
   const customMapStyle = [
@@ -400,14 +420,14 @@ export default function MapOnlineScreen({ onGoOffline }: MapOnlineScreenProps) {
           </View>
 
           {/* Job Notification */}
-          {showJobNotification && (
+          {currentOffer && currentOffer.job && (
             <JobNotification
-              pickupAddress="221B Baker Street, NW1 6XE"
-              pickupTime="14:30"
-              deliveryAddress="10 Downing Street, SW1A 2AA"
-              deliveryTime="15:15"
-              amount="£12.50"
-              distance="3.2 mi"
+              pickupAddress={`${currentOffer.job.collect_address}, ${currentOffer.job.collect_postcode}`}
+              pickupTime="ASAP"
+              deliveryAddress={`${currentOffer.job.dropoff_address}, ${currentOffer.job.dropoff_postcode}`}
+              deliveryTime="TBD"
+              amount={currentOffer.job.amount}
+              distance={currentOffer.job.distance || 'N/A'}
               multipleDrops={false}
               onAccept={handleAcceptJob}
               onReject={handleRejectJob}

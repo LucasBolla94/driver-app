@@ -165,40 +165,46 @@ export default function HomeScreen() {
           // Fetch driver data from drivers_uk table
           const { data: driverData, error } = await supabase
             .from('drivers_uk')
-            .select('firstName, lastName, points, profile_url')
+            .select('first_name, last_name, points, profile_url, online_status')
             .eq('uid', user.id)
             .single();
 
-          if (driverData && !error) {
-            setDriverName(`${driverData.firstName} ${driverData.lastName}`);
+          console.log('=== DRIVER DATA FETCH DEBUG ===');
+          console.log('User ID:', user.id);
+          console.log('Driver data response:', JSON.stringify(driverData, null, 2));
+          console.log('Error:', JSON.stringify(error, null, 2));
+          console.log('Has error:', !!error);
+          console.log('Has data:', !!driverData);
+
+          if (error) {
+            console.error('❌ Error fetching driver data:', error);
+            console.error('Error code:', error.code);
+            console.error('Error message:', error.message);
+            console.error('Error details:', error.details);
+            setDriverName('Driver');
+            setDriverUserId(user.id);
+          } else if (driverData) {
+            console.log('✅ Data received successfully');
+            console.log('first_name:', driverData.first_name);
+            console.log('last_name:', driverData.last_name);
+            const fullName = `${driverData.first_name || ''} ${driverData.last_name || ''}`.trim();
+            console.log('Setting driver name to:', fullName);
+            setDriverName(fullName || 'Driver');
             setDriverPoints(driverData.points || 0);
             setDriverUserId(user.id);
             setDriverProfileUrl(driverData.profile_url || null);
-          } else {
-            setDriverName('Driver');
-            setDriverUserId(user.id);
-          }
 
-          // Check if driver is already online in drivers_online table
-          const { data: onlineData, error: onlineError } = await supabase
-            .from('drivers_online')
-            .select('status')
-            .eq('userId', user.id)
-            .single();
-
-          if (onlineData && !onlineError) {
-            // Set online status based on database value
-            const isCurrentlyOnline = onlineData.status === true;
+            // Set online status from drivers_uk table
+            const isCurrentlyOnline = driverData.online_status === 'online';
             console.log('Driver online status from DB:', isCurrentlyOnline);
             setIsOnline(isCurrentlyOnline);
-
-            // Don't force offline - just read the current state
-            // The status will be updated only when user explicitly goes offline
-          } else if (onlineError) {
-            // Error or no record found - default to offline but don't update DB yet
-            console.log('No online status record found, defaulting to offline (not updating DB)');
+          } else {
+            console.warn('⚠️ No error but also no data - user might not exist in drivers_uk table');
+            setDriverName('Driver');
+            setDriverUserId(user.id);
             setIsOnline(false);
           }
+          console.log('=== END DEBUG ===');
         }
       } catch (error) {
         console.error('Error fetching driver data:', error);
@@ -218,16 +224,16 @@ export default function HomeScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data: onlineData, error: onlineError } = await supabase
-          .from('drivers_online')
-          .select('status')
-          .eq('userId', user.id)
+        const { data: driverData, error } = await supabase
+          .from('drivers_uk')
+          .select('online_status')
+          .eq('uid', user.id)
           .single();
 
-        if (onlineData && !onlineError) {
-          const isCurrentlyOnline = onlineData.status === true;
+        if (driverData && !error) {
+          const isCurrentlyOnline = driverData.online_status === 'online';
           if (isCurrentlyOnline) {
-            console.log('Status is true in DB, redirecting to online screen');
+            console.log('Status is online in DB, redirecting to online screen');
             setIsOnline(true);
           }
         }
@@ -252,9 +258,15 @@ export default function HomeScreen() {
       if (!user) return;
 
       await supabase
-        .from('drivers_online')
-        .update({ status: false })
-        .eq('userId', user.id);
+        .from('drivers_uk')
+        .update({
+          online_status: 'offline',
+          online_latitude: null,
+          online_longitude: null,
+        })
+        .eq('uid', user.id);
+
+      console.log('Driver set to offline in drivers_uk table');
     } catch (error) {
       console.error('Error setting driver offline:', error);
     }
@@ -271,31 +283,27 @@ export default function HomeScreen() {
       console.log('Setting driver online for user:', user.id);
 
       // Use location if available, otherwise use default location
-      // The map-online screen will update with real-time location
       const lat = location?.latitude || 0;
       const lng = location?.longitude || 0;
 
       console.log('Using location:', { latitude: lat, longitude: lng });
 
-      // Use upsert to insert or update - just set status to true
-      const { data, error } = await supabase
-        .from('drivers_online')
-        .upsert({
-          userId: user.id,
-          latitude: lat,
-          longitude: lng,
-          status: true,
-          lastUpdated: new Date().toISOString(),
-        }, {
-          onConflict: 'userId'
-        });
+      // Update drivers_uk table with online status and location
+      const { error } = await supabase
+        .from('drivers_uk')
+        .update({
+          online_status: 'online',
+          online_latitude: lat,
+          online_longitude: lng,
+        })
+        .eq('uid', user.id);
 
       if (error) {
         console.error('Error setting driver online in DB:', error);
         Alert.alert('Error', 'Failed to go online. Please try again.');
         return false;
       } else {
-        console.log('Successfully set driver online in DB with status=true');
+        console.log('Successfully set driver online in drivers_uk table');
         return true;
       }
     } catch (error) {

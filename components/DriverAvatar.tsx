@@ -88,11 +88,65 @@ export default function DriverAvatar({
     }
   };
 
-  const handlePhotoUpload = async () => {
+  const showPhotoOptions = () => {
     if (!editable) return;
 
+    Alert.alert(
+      'Profile Photo',
+      'Choose an option',
+      [
+        {
+          text: 'Take Photo',
+          onPress: () => handleTakePhoto(),
+        },
+        {
+          text: 'Choose from Library',
+          onPress: () => handleChooseFromLibrary(),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleTakePhoto = async () => {
     try {
-      // Request permission
+      // Request camera permission
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please grant camera permission to take a photo.'
+        );
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets || !result.assets[0]) {
+        return;
+      }
+
+      await uploadPhoto(result.assets[0]);
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const handleChooseFromLibrary = async () => {
+    try {
+      // Request media library permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (status !== 'granted') {
@@ -103,7 +157,7 @@ export default function DriverAvatar({
         return;
       }
 
-      // Pick image
+      // Pick image from library
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
@@ -116,7 +170,15 @@ export default function DriverAvatar({
         return;
       }
 
-      const image = result.assets[0];
+      await uploadPhoto(result.assets[0]);
+    } catch (error) {
+      console.error('Library picker error:', error);
+      Alert.alert('Error', 'Failed to pick photo');
+    }
+  };
+
+  const uploadPhoto = async (image: ImagePicker.ImagePickerAsset) => {
+    try {
 
       if (!image.base64) {
         Alert.alert('Error', 'Failed to process image');
@@ -247,7 +309,7 @@ export default function DriverAvatar({
               borderRadius: editButtonSize / 2,
             },
           ]}
-          onPress={handlePhotoUpload}
+          onPress={showPhotoOptions}
           disabled={uploading}
         >
           {uploading ? (

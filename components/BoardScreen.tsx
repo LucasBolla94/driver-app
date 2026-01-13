@@ -47,7 +47,7 @@ export default function BoardScreen() {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('jobs')
+        .from('jobs_uk')
         .select('id, ref, collect_address, collect_postcode, collect_city, collect_latitude, collect_longitude, dropoff_address, dropoff_postcode, dropoff_city, dropoff_latitude, dropoff_longitude, amount, status, created_at, distance, weight, notes')
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
